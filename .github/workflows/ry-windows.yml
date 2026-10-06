@@ -1,0 +1,64 @@
+# Fork-only build: Windows x64 NSIS installer as a workflow artifact.
+# No signing keys or release token needed (upstream release/nightly workflows require both).
+name: RY Windows build
+
+on:
+  push:
+    branches: [ry-fixes]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Apply fork version
+        shell: bash
+        run: |
+          node -e '
+            const fs = require("fs");
+            const v = "1.1.1-ry.1";
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8")); p.version = v;
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+            const c = "src-tauri/Cargo.toml";
+            fs.writeFileSync(c, fs.readFileSync(c, "utf8").replace(/(^version = ")[^"]+(")/m, `$1${v}$2`));
+            const l = "src-tauri/Cargo.lock";
+            fs.writeFileSync(l, fs.readFileSync(l, "utf8").replace(/(name = "EcoPaste"\nversion = ")[^"]+(")/, `$1${v}$2`));
+          '
+
+      - run: pnpm build:icon
+        env:
+          PLATFORM: windows-latest
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Build
+        shell: bash
+        env:
+          CI: false
+        run: pnpm tauri build --target x86_64-pc-windows-msvc --bundles nsis --config '{"bundle":{"createUpdaterArtifacts":false}}'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ecopaste-windows-x64-nsis
+          path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          if-no-files-found: error
