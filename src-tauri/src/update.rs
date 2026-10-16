@@ -521,6 +521,11 @@ mod tests {
             config["plugins"]["updater"]["endpoints"],
             serde_json::json!([FORK_ENDPOINT])
         );
+        // 上游官方公钥：fork 的安装包用 fork 自己的密钥签名，留着官方公钥会让每次升级都校验失败。
+        assert_ne!(
+            config["plugins"]["updater"]["pubkey"],
+            "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIwMzUzRkJCQUI3NjY4RgpSV1NQWnJlNisxTURBbFE2WWJpUlBJR0x0OXJOclVuUGlVYVhoNjJPZitYN0Q4V05GeW1aU2w0Zwo="
+        );
     }
 
     #[test]
