@@ -1,7 +1,6 @@
 import { useEventListener, useUnmount } from "ahooks";
 import { type FC, type ReactNode, useRef, useState } from "react";
 import { useKeyboardEvent } from "@/hooks/useKeyboardEvent";
-import type { QuickPasteModifier } from "@/types/rySettings";
 import { cn } from "@/utils/cn";
 import { isMac, isWinClipboardWindow } from "@/utils/is";
 
@@ -27,10 +26,6 @@ interface KeyHintProps {
    * 按下完整组合键（macOS: ⌘+key / Windows: Ctrl+key）时触发；事件默认会被 preventDefault。
    */
   onKeyPress?: (event: KeyboardEvent) => void;
-  /**
-   * 修饰键：默认 `primary`（macOS ⌘ / Windows Ctrl）；`alt` 为 Alt / ⌥（fork 补丁，快速粘贴用）。
-   */
-  modifier?: QuickPasteModifier;
 }
 
 /**
@@ -39,14 +34,7 @@ interface KeyHintProps {
  * 时调用 `onKeyPress`，调用方无需再额外注册一份 `useKeyPress`。
  */
 const KeyHint: FC<KeyHintProps> = (props) => {
-  const {
-    hintKey,
-    onKeyPress,
-    iconName,
-    children,
-    className,
-    modifier = "primary",
-  } = props;
+  const { hintKey, onKeyPress, iconName, children, className } = props;
 
   const [active, setActive] = useState(false);
   const isWindowsClipboardWindow = isWinClipboardWindow();
@@ -64,7 +52,7 @@ const KeyHint: FC<KeyHintProps> = (props) => {
    * 修饰键按下时展示快捷键提示；完整组合键命中时触发业务回调。
    */
   const handleKeyDown = (event: KeyboardEvent) => {
-    const isModifierPressed = isHintModifierPressed(event, modifier);
+    const isModifierPressed = isMac ? event.metaKey : event.ctrlKey;
 
     if (!isModifierPressed) return;
 
@@ -72,7 +60,7 @@ const KeyHint: FC<KeyHintProps> = (props) => {
     clearBlurResetTimer();
     setActive(true);
 
-    if (!matchesHintKey(event, hintKey, modifier)) return;
+    if (event.key.toLowerCase() !== hintKey.toLowerCase()) return;
 
     event.preventDefault();
 
@@ -83,7 +71,7 @@ const KeyHint: FC<KeyHintProps> = (props) => {
    * 仅在修饰键真正松开后隐藏提示，避免按住 Ctrl/⌘ 再敲字母时闪烁。
    */
   const handleKeyUp = (event: KeyboardEvent) => {
-    const isModifierPressed = isHintModifierPressed(event, modifier);
+    const isModifierPressed = isMac ? event.metaKey : event.ctrlKey;
 
     if (isModifierPressed) return;
 
@@ -145,30 +133,5 @@ const KeyHint: FC<KeyHintProps> = (props) => {
     </div>
   );
 };
-
-/**
- * 判断提示所用的修饰键是否按下。
- */
-function isHintModifierPressed(
-  event: KeyboardEvent,
-  modifier: QuickPasteModifier,
-) {
-  if (modifier === "alt") return event.altKey;
-
-  return isMac ? event.metaKey : event.ctrlKey;
-}
-
-/**
- * macOS 上 ⌥ + 数字会把 `key` 变成特殊符号（⌥1 = "¡"），Alt 模式下改用物理键位 `code` 兜底。
- */
-function matchesHintKey(
-  event: KeyboardEvent,
-  hintKey: string,
-  modifier: QuickPasteModifier,
-) {
-  if (event.key.toLowerCase() === hintKey.toLowerCase()) return true;
-
-  return modifier === "alt" && event.code === `Digit${hintKey}`;
-}
 
 export default KeyHint;

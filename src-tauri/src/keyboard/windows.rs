@@ -14,7 +14,7 @@ use winapi::um::winuser::{
     WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
-use super::alt_digits::{self, AltDigitAction};
+use super::alt_as_ctrl;
 use super::NAV_EVENT;
 
 static NAV_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -72,6 +72,7 @@ fn preview_key(vk: u32) -> Option<&'static str> {
 pub fn enable_navigation_keys(app: &AppHandle) {
     let _ = APP_HANDLE.set(app.clone());
     NAV_ENABLED.store(true, Ordering::Relaxed);
+    alt_as_ctrl::sync_held_alt(app);
 
     // 已有钩子线程时不再起新线程；NAV_ENABLED 的恢复就够了。
     if HOOK_THREAD_ID
@@ -106,6 +107,7 @@ pub fn enable_navigation_keys(app: &AppHandle) {
 
 pub fn disable_navigation_keys() {
     NAV_ENABLED.store(false, Ordering::Relaxed);
+    alt_as_ctrl::reset();
 
     // 隐藏窗口时主动通知前端 Ctrl 已松开：隐藏后钩子线程随即退出，
     // 此后真实的 Ctrl keyup 不会再被捕获，否则前端会残留"Ctrl 按下"状态。
@@ -116,7 +118,6 @@ pub fn disable_navigation_keys() {
         ) {
             log::warn!("emit nav event failed: {err:?}");
         }
-        alt_digits::emit_alt_released(app);
     }
 
     let tid = HOOK_THREAD_ID
@@ -138,21 +139,14 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     let kbd = &*(lparam as *const KBDLLHOOKSTRUCT);
     let vk = kbd.vkCode;
     let msg = wparam as UINT;
-    let ctrl_down = (GetAsyncKeyState(VK_CONTROL) as u16) & 0x8000 != 0;
+    // 设置选了 Alt 时，按着的 Alt 和 Alt 键本身都按 Ctrl 处理（见 alt_as_ctrl.rs）。
+    let ctrl_down = (GetAsyncKeyState(VK_CONTROL) as u16) & 0x8000 != 0
+        || APP_HANDLE.get().is_some_and(alt_as_ctrl::alt_acts_as_ctrl);
 
-    if let Some(app) = APP_HANDLE.get() {
-        let action = alt_digits::handle(app, kbd, msg, ctrl_down, |vk| {
-            consumed_keys()
-                .lock()
-                .expect("consumed keys poisoned")
-                .insert(vk);
-        });
-        if let AltDigitAction::Swallow = action {
-            return 1;
-        }
-    }
-
-    let is_ctrl = matches!(vk as i32, VK_CONTROL | VK_LCONTROL | VK_RCONTROL);
+    let is_ctrl = matches!(vk as i32, VK_CONTROL | VK_LCONTROL | VK_RCONTROL)
+        || APP_HANDLE
+            .get()
+            .is_some_and(|app| alt_as_ctrl::is_mapped_alt(app, vk, msg));
 
     if is_ctrl {
         if let Some(app) = APP_HANDLE.get() {
@@ -180,10 +174,7 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
 
     let nav_key = nav_key(vk);
     let preview_key = preview_key(vk);
-    // 选了 Alt 作为快速粘贴修饰键时，Ctrl + 数字不再拦截，照常交给前台程序。
-    let shortcut_key = if ctrl_down
-        && !(alt_digits::is_digit(vk) && APP_HANDLE.get().is_some_and(alt_digits::alt_mode))
-    {
+    let shortcut_key = if ctrl_down {
         ctrl_shortcut_key(vk)
     } else {
         None

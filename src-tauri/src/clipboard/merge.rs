@@ -315,7 +315,7 @@ pub fn dispatch(app: &AppHandle, item: ClipboardItem, source_app: Option<Clipboa
         Decision::Merge(pending) => {
             let app = app.clone();
             tauri::async_runtime::spawn(async move {
-                merge_into_latest(&app, pending, merge.separator).await;
+                merge_into_latest(&app, pending, merge.separator, merge.sound).await;
             });
         }
         Decision::Drop => log::info!("merge copy: dropped duplicate clipboard write"),
@@ -359,7 +359,12 @@ fn persist_all(app: AppHandle, items: Vec<Pending>) {
 
 /// 把新复制的文本接到最近一条历史后面，写回剪贴板并入库。任何一步不满足拼接条件，
 /// 都退回为把新内容照常入库，保证复制的内容不会丢。
-async fn merge_into_latest(app: &AppHandle, pending: Pending, separator: MergeSeparator) {
+async fn merge_into_latest(
+    app: &AppHandle,
+    pending: Pending,
+    separator: MergeSeparator,
+    sound: bool,
+) {
     let pool = app.state::<crate::db::DatabaseState>().pool().await;
 
     let previous = match find_latest_item(&pool).await {
@@ -409,6 +414,11 @@ async fn merge_into_latest(app: &AppHandle, pending: Pending, separator: MergeSe
 
     if let Err(err) = persist_and_notify(app, &pool, &merged, pending.source_app.as_ref()).await {
         log::error!("merge copy: persist merged item failed: {err}");
+        return;
+    }
+
+    if sound {
+        super::merge_sound::play();
     }
 }
 

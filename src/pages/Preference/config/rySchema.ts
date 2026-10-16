@@ -7,21 +7,23 @@ import type { PreferenceSetting } from "../types/preferences";
  * 方便叠到上游新版上。设置值都在 `settings.ry` 段。
  */
 
-/** 「粘贴行为」分区：快速粘贴修饰键。 */
-export const RY_PASTE_SETTINGS: PreferenceSetting[] = [
-  {
-    control: {
-      options: [{ value: "primary" }, { value: "alt" }],
-      type: "segmented",
-    },
-    id: "paste.quickPasteModifier",
-    keywords: ["alt", "ctrl", "number", "digit", "quick paste", "modifier"],
-    path: ["ry", "quickPasteModifier"],
-    value: (settings) => {
-      return settings.ry.quickPasteModifier;
-    },
-  },
-];
+/** 「快捷键」分区：窗口内快捷键修饰键。Alt 当 Ctrl 用由 Windows 导航钩子实现，macOS 不展示。 */
+export const RY_SHORTCUT_SETTINGS: PreferenceSetting[] = isWin
+  ? [
+      {
+        control: {
+          options: [{ value: "primary" }, { value: "alt" }],
+          type: "segmented",
+        },
+        id: "shortcuts.windowModifier",
+        keywords: ["alt", "ctrl", "modifier", "number", "digit", "hint"],
+        path: ["ry", "windowModifier"],
+        value: (settings: Settings) => {
+          return settings.ry.windowModifier;
+        },
+      },
+    ]
+  : [];
 
 /** 「复制反馈」分区：拼接复制。键盘钩子目前只有 Windows 实现，macOS 不展示。 */
 export const RY_COPY_SETTINGS: PreferenceSetting[] = isWin
@@ -49,6 +51,19 @@ export const RY_COPY_SETTINGS: PreferenceSetting[] = isWin
         path: ["ry", "mergeCopy", "separator"],
         value: (settings: Settings) => {
           return settings.ry.mergeCopy.separator;
+        },
+      },
+      {
+        control: { type: "switch" },
+        disabledWhen: (settings: Settings) => {
+          return !settings.ry.mergeCopy.enabled;
+        },
+        id: "copy.mergeSound",
+        keywords: ["merge", "sound", "feedback"],
+        parentId: "copy.mergeCopy",
+        path: ["ry", "mergeCopy", "sound"],
+        value: (settings: Settings) => {
+          return settings.ry.mergeCopy.sound;
         },
       },
     ]

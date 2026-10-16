@@ -328,6 +328,10 @@
           },
           "title": "Merge separator"
         },
+        "mergeSound": {
+          "description": "Play a short sound, distinct from the copy sound, when a merge succeeds.",
+          "title": "Merge sound"
+        },
         "plainDefault": {
           "description": "When copying text records, strip HTML/RTF formatting and copy plain text by default.",
           "title": "Copy as Plain Text by Default"
@@ -473,14 +477,6 @@
         "plainDefault": {
           "description": "When pasting text records, strip HTML/RTF formatting and paste plain text by default.",
           "title": "Paste as Plain Text by Default"
-        },
-        "quickPasteModifier": {
-          "description": "Hold this modifier in the clipboard window and press 1–9 or 0 to paste the 1st–10th visible item.",
-          "options": {
-            "alt": "Alt",
-            "primary": "Ctrl (⌘ on macOS)"
-          },
-          "title": "Quick paste modifier"
         }
       },
       "permissions": {
@@ -560,6 +556,14 @@
           "description": "Open or hide the preferences window.",
           "placeholder": "Alt+X",
           "title": "Open Preferences Window"
+        },
+        "windowModifier": {
+          "description": "Shortcuts inside the clipboard window (search, groups, pin, delete, and the digits that paste the items currently shown) are triggered by holding Ctrl, which also shows the letter, symbol and digit hints. With \"Ctrl or Alt\", holding Alt works exactly like holding Ctrl.",
+          "options": {
+            "alt": "Ctrl or Alt",
+            "primary": "Ctrl"
+          },
+          "title": "Window shortcut modifier"
         },
         "winV": {
           "description": "Press Win+V to summon EcoPaste instead of the Windows clipboard history panel.",

@@ -10,6 +10,7 @@ mod ingest;
 mod merge;
 #[cfg(target_os = "windows")]
 mod merge_hook;
+mod merge_sound;
 mod payload;
 mod read;
 mod secrets;

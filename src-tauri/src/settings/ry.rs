@@ -10,8 +10,10 @@ const DEFAULT_IMAGE_STORAGE_LIMIT_MB: u32 = 2048;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Ry {
-    /// 列表「修饰键 + 数字」快速粘贴使用的修饰键。
-    pub quick_paste_modifier: QuickPasteModifier,
+    /// 剪贴板窗口内快捷键的修饰键（仅 Windows）。`Alt` 表示 Alt 与 Ctrl 等效。
+    /// 别名兼容 1.1.1-ry.3 / ry.4 写下的旧字段名。
+    #[serde(alias = "quickPasteModifier")]
+    pub window_modifier: WindowModifier,
     /// 拼接复制：按住 Ctrl 连按两下 C，把新复制的文本接到上一条历史后面（仅 Windows）。
     pub merge_copy: MergeCopy,
     /// 历史图片原图总占用上限，单位 MB；超过时删除最旧的普通图片，`0` = 不限。
@@ -21,7 +23,7 @@ pub struct Ry {
 impl Default for Ry {
     fn default() -> Self {
         Self {
-            quick_paste_modifier: QuickPasteModifier::Primary,
+            window_modifier: WindowModifier::Primary,
             merge_copy: MergeCopy::default(),
             image_storage_limit_mb: DEFAULT_IMAGE_STORAGE_LIMIT_MB,
         }
@@ -39,10 +41,11 @@ impl Ry {
     }
 }
 
-/// `Primary` 是平台主修饰键（macOS ⌘ / Windows Ctrl），即上游原有行为。
+/// `Primary` 是平台主修饰键（macOS ⌘ / Windows Ctrl），即上游原有行为；
+/// `Alt` 表示按住 Alt 与按住 Ctrl 完全等效（Ctrl 照常可用）。
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
-pub enum QuickPasteModifier {
+pub enum WindowModifier {
     #[default]
     Primary,
     Alt,
@@ -53,6 +56,8 @@ pub enum QuickPasteModifier {
 pub struct MergeCopy {
     pub enabled: bool,
     pub separator: MergeSeparator,
+    /// 拼接成功时播放提示音。
+    pub sound: bool,
 }
 
 impl Default for MergeCopy {
@@ -60,6 +65,7 @@ impl Default for MergeCopy {
         Self {
             enabled: true,
             separator: MergeSeparator::Space,
+            sound: true,
         }
     }
 }
@@ -95,6 +101,16 @@ mod tests {
             Some(2048 * 1024 * 1024)
         );
         assert!(settings.ry.merge_copy.enabled);
+    }
+
+    #[test]
+    fn window_modifier_reads_the_old_quick_paste_field_name() {
+        let ry: Ry = serde_json::from_str(r#"{ "quickPasteModifier": "alt" }"#).unwrap();
+
+        assert_eq!(ry.window_modifier, WindowModifier::Alt);
+        assert!(serde_json::to_string(&ry)
+            .unwrap()
+            .contains(r#""windowModifier":"alt""#));
     }
 
     #[test]

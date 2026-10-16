@@ -328,6 +328,10 @@
           },
           "title": "拼接分隔符"
         },
+        "mergeSound": {
+          "description": "拼接成功时播放一声短促的提示音，和普通复制提示音区分开。",
+          "title": "拼接提示音"
+        },
         "plainDefault": {
           "description": "复制文本记录时默认去除 HTML/RTF 等格式，只复制纯文本。",
           "title": "默认复制为纯文本"
@@ -473,14 +477,6 @@
         "plainDefault": {
           "description": "粘贴文本记录时默认去除 HTML/RTF 等格式，只粘贴纯文本。",
           "title": "默认纯文本粘贴"
-        },
-        "quickPasteModifier": {
-          "description": "在剪贴板窗口按住该修饰键，再按 1–9、0 直接粘贴可见的第 1–10 条记录。",
-          "options": {
-            "alt": "Alt",
-            "primary": "Ctrl（macOS 为 ⌘）"
-          },
-          "title": "快速粘贴修饰键"
         }
       },
       "permissions": {
@@ -560,6 +556,14 @@
           "description": "打开或隐藏偏好设置窗口。",
           "placeholder": "Alt+X",
           "title": "打开偏好设置窗口"
+        },
+        "windowModifier": {
+          "description": "剪贴板窗口里的快捷键（搜索、分组、置顶、删除，以及给当前显示的记录粘贴用的数字等）默认按住 Ctrl 触发，按住时会显示字母、符号和数字提示。选「Ctrl 或 Alt」后，按住 Alt 与按住 Ctrl 完全一样。",
+          "options": {
+            "alt": "Ctrl 或 Alt",
+            "primary": "Ctrl"
+          },
+          "title": "窗口快捷键修饰键"
         },
         "winV": {
           "description": "按 Win+V 唤起 EcoPaste，替代 Windows 系统剪贴板历史面板。",

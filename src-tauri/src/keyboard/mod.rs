@@ -5,6 +5,6 @@
 
 pub const NAV_EVENT: &str = "keyboard://nav";
 
-mod alt_digits;
+mod alt_as_ctrl;
 mod windows;
 pub use windows::{disable_navigation_keys, enable_navigation_keys};

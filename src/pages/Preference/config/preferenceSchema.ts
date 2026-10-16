@@ -11,7 +11,7 @@ import type { PreferenceSetting, PreferenceTab } from "../types/preferences";
 import {
   RY_COPY_SETTINGS,
   RY_HISTORY_SETTINGS,
-  RY_PASTE_SETTINGS,
+  RY_SHORTCUT_SETTINGS,
 } from "./rySchema";
 
 const CLICK_ACTION_OPTIONS = [
@@ -301,7 +301,6 @@ export const preferenceTabs: PreferenceTab[] = [
               return settings.clipboard.content.pasteFilesAsPath;
             },
           },
-          ...RY_PASTE_SETTINGS,
         ],
       },
       {
@@ -768,6 +767,7 @@ export const preferenceTabs: PreferenceTab[] = [
                 },
               ]
             : []),
+          ...RY_SHORTCUT_SETTINGS,
         ],
       },
     ],
