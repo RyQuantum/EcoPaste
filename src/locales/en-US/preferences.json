@@ -388,6 +388,10 @@
           "description": "Check and clean history every specified number of hours. 0 disables periodic cleanup; startup cleanup still runs once.",
           "title": "Auto Cleanup Interval"
         },
+        "imageStorageLimitMb": {
+          "description": "When original images in history exceed this size, the oldest regular images are removed; favorites and pinned items are kept. 0 means unlimited. Works alongside retention and max count.",
+          "title": "Image storage limit"
+        },
         "maxCount": {
           "description": "When the limit is exceeded, older regular records are cleaned automatically; favorites and pinned items are always kept. 0 means unlimited items.",
           "title": "Maximum Items"

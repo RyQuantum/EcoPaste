@@ -8,6 +8,7 @@ import {
 import type { Settings } from "@/types/settings";
 import { isMac, isWin } from "@/utils/is";
 import type { PreferenceSetting, PreferenceTab } from "../types/preferences";
+import { RY_HISTORY_SETTINGS } from "./rySchema";
 
 const CLICK_ACTION_OPTIONS = [
   { value: "disabled" },
@@ -186,6 +187,7 @@ export const preferenceTabs: PreferenceTab[] = [
               return settings.clipboard.history.cleanupIntervalHours;
             },
           },
+          ...RY_HISTORY_SETTINGS,
         ],
       },
       {

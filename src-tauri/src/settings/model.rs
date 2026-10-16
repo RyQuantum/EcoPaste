@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use super::Ry;
 use crate::db::models::ClipboardItemSort;
 
 pub const WINDOW_OPEN_SELECTION_PRESERVE: &str = "preserve";
@@ -19,6 +20,7 @@ pub struct Settings {
     pub clipboard: Clipboard,
     pub onboarding: Onboarding,
     pub update: Update,
+    pub ry: Ry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

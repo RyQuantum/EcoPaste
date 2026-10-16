@@ -1,4 +1,5 @@
-//! 历史清理后台任务：按 `clipboard.history.retention` + `maxCount` 定期裁剪。
+//! 历史清理后台任务：按 `clipboard.history.retention` + `maxCount` 定期裁剪，
+//! 之后再按图片总占用上限裁剪（见 `image_quota.rs`）。
 //!
 //! 启动即跑一次；之后按用户设置的清理周期触发，每次都从 `SettingsStore` 取最新配置——
 //! 用户在偏好里调时长 / 上限后不必重启即可生效。置顶与收藏项一律保留（由 [`cleanup_history`] 保证）。
@@ -21,6 +22,7 @@ const SCHEDULER_TICK_INTERVAL: Duration = Duration::from_secs(60);
 pub fn spawn(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         run_once(&app).await;
+        super::image_quota::enforce(&app).await;
         let mut last_cleanup_at = Instant::now();
         let mut ticker = tokio::time::interval(SCHEDULER_TICK_INTERVAL);
         ticker.tick().await;
@@ -36,6 +38,7 @@ pub fn spawn(app: AppHandle) {
             }
 
             run_once(&app).await;
+            super::image_quota::enforce(&app).await;
             last_cleanup_at = Instant::now();
         }
     });
@@ -85,7 +88,7 @@ fn cleanup_interval(app: &AppHandle) -> Option<Duration> {
 
 /// 删除被清理图片记录的落盘文件（原图 + 缩略图）。`ImageStore` 未注册或单个文件删除失败
 /// 都只记日志、不阻断——清理本身已成功，残留文件最坏只是占用磁盘，不影响功能。
-fn remove_images(app: &AppHandle, file_names: &[String]) {
+pub(super) fn remove_images(app: &AppHandle, file_names: &[String]) {
     if file_names.is_empty() {
         return;
     }

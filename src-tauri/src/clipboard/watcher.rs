@@ -349,6 +349,11 @@ impl ClipboardHandler for ClipboardChangeHandler {
             let pool = app.state::<crate::db::DatabaseState>().pool().await;
             if let Err(err) = persist_and_notify(&app, &pool, &item, source_app.as_ref()).await {
                 log::error!("clipboard watcher: persist failed: {err}");
+                return;
+            }
+            // 新图片入库后检查一次图片总占用上限（fork 补丁）。
+            if item.kind == crate::db::models::ClipboardKind::Image {
+                super::image_quota::enforce(&app).await;
             }
         });
     }

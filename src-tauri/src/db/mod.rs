@@ -1,6 +1,7 @@
 pub mod apps;
 pub mod file_icons;
 pub mod groups;
+pub mod image_quota;
 pub mod init;
 pub mod items;
 pub mod models;

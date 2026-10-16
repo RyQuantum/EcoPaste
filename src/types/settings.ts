@@ -3,6 +3,7 @@ import type {
   ClipboardItemSort,
   ClipboardRange,
 } from "./clipboard";
+import type { RySettings } from "./rySettings";
 
 /**
  * 设置数据契约，镜像 `src-tauri/src/settings/model.rs::Settings`。
@@ -212,6 +213,7 @@ export interface Settings {
   clipboard: Clipboard;
   onboarding: Onboarding;
   update: Update;
+  ry: RySettings;
 }
 
 /**

@@ -5,6 +5,7 @@ mod detect;
 mod file_icon_store;
 mod guard;
 mod icon;
+mod image_quota;
 mod ingest;
 mod payload;
 mod read;
