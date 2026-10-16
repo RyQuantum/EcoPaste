@@ -13,9 +13,13 @@ const UPDATE_PROGRESS_EVENT: &str = "update://progress";
 const STABLE_ENDPOINT_ENV: &str = "ECOPASTE_UPDATE_ENDPOINT";
 const BETA_ENDPOINT_ENV: &str = "ECOPASTE_UPDATE_BETA_ENDPOINT";
 const NIGHTLY_ENDPOINT_ENV: &str = "ECOPASTE_UPDATE_NIGHTLY_ENDPOINT";
-const DEFAULT_STABLE_ENDPOINT: &str = "https://releases.ecopaste.cn/update?channel=stable";
-const DEFAULT_BETA_ENDPOINT: &str = "https://releases.ecopaste.cn/update?channel=beta";
-const DEFAULT_NIGHTLY_ENDPOINT: &str = "https://releases.ecopaste.cn/update?channel=nightly";
+// RyQuantum/EcoPaste fork：三个通道都指向 fork 自己的 Releases，否则官方发版会把 fork 版覆盖掉。
+// fork 只发一个通道，beta / nightly 开关因此不再有区别。
+const FORK_ENDPOINT: &str =
+    "https://github.com/RyQuantum/EcoPaste/releases/latest/download/latest.json";
+const DEFAULT_STABLE_ENDPOINT: &str = FORK_ENDPOINT;
+const DEFAULT_BETA_ENDPOINT: &str = FORK_ENDPOINT;
+const DEFAULT_NIGHTLY_ENDPOINT: &str = FORK_ENDPOINT;
 const AUTO_CHECK_INITIAL_DELAY_SECONDS: u64 = 8;
 const AUTO_CHECK_SETTINGS_REFRESH_SECONDS: u64 = 60 * 60;
 const AUTO_CHECK_FAILURE_RETRY_SECONDS: u64 = 60 * 60;
@@ -495,6 +499,27 @@ mod tests {
         assert_eq!(
             next_auto_check_delay_for_settings(&settings, now),
             Duration::from_secs(30 * 60)
+        );
+    }
+
+    #[test]
+    fn default_endpoints_never_point_at_upstream_release_server() {
+        for endpoint in [
+            DEFAULT_STABLE_ENDPOINT,
+            DEFAULT_BETA_ENDPOINT,
+            DEFAULT_NIGHTLY_ENDPOINT,
+        ] {
+            assert!(
+                endpoint.starts_with("https://github.com/RyQuantum/EcoPaste/"),
+                "{endpoint}"
+            );
+        }
+
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(
+            config["plugins"]["updater"]["endpoints"],
+            serde_json::json!([FORK_ENDPOINT])
         );
     }
 
