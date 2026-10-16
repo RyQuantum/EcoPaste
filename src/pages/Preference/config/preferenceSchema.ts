@@ -8,7 +8,7 @@ import {
 import type { Settings } from "@/types/settings";
 import { isMac, isWin } from "@/utils/is";
 import type { PreferenceSetting, PreferenceTab } from "../types/preferences";
-import { RY_HISTORY_SETTINGS } from "./rySchema";
+import { RY_HISTORY_SETTINGS, RY_PASTE_SETTINGS } from "./rySchema";
 
 const CLICK_ACTION_OPTIONS = [
   { value: "disabled" },
@@ -297,6 +297,7 @@ export const preferenceTabs: PreferenceTab[] = [
               return settings.clipboard.content.pasteFilesAsPath;
             },
           },
+          ...RY_PASTE_SETTINGS,
         ],
       },
       {

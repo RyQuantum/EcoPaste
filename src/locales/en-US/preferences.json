@@ -461,6 +461,14 @@
         "plainDefault": {
           "description": "When pasting text records, strip HTML/RTF formatting and paste plain text by default.",
           "title": "Paste as Plain Text by Default"
+        },
+        "quickPasteModifier": {
+          "description": "Hold this modifier in the clipboard window and press 1–9 or 0 to paste the 1st–10th visible item.",
+          "options": {
+            "alt": "Alt",
+            "primary": "Ctrl (⌘ on macOS)"
+          },
+          "title": "Quick paste modifier"
         }
       },
       "permissions": {

@@ -1,10 +1,12 @@
 import type { DragEvent, FC, MouseEvent, PointerEvent, Ref } from "react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useSnapshot } from "valtio";
 import { popupClipboardItemMenu, startDragClipboardItem } from "@/commands";
 import AssetImage from "@/components/AssetImage";
 import KeyHint from "@/components/KeyHint";
 import type { ItemActionLabels } from "@/constants/itemActions";
+import { settingsState } from "@/stores/settings";
 import type { ClipboardAction, ClipboardItem } from "@/types/clipboard";
 import type { ItemAction } from "@/types/settings";
 import { cn } from "@/utils/cn";
@@ -20,7 +22,7 @@ interface ClipboardCardProps {
   isSelected?: boolean;
   /**
    * 快捷键提示字符（"1"–"9" / "0"），存在时在 app 图标上叠加 KeyHint；
-   * 按下修饰键（macOS ⌘ / Windows Ctrl）+ 该数字键触发快速粘贴。
+   * 按下修饰键（默认 macOS ⌘ / Windows Ctrl，设置 `ry.quickPasteModifier` 可改为 Alt）+ 该数字键触发快速粘贴。
    */
   hintKey?: string;
   /**
@@ -78,6 +80,7 @@ const ClipboardCard: FC<ClipboardCardProps> = (props) => {
   } = props;
   const { kind, sourceAppId, subKind, sourceAppIconPath, sourceAppName } = item;
   const { t } = useTranslation("clipboard");
+  const { ry } = useSnapshot(settingsState);
   const [hovered, setHovered] = useState(false);
   const typeKey = subKind ?? kind;
   const typeLabel = t(`types.${typeKey}`);
@@ -158,7 +161,11 @@ const ClipboardCard: FC<ClipboardCardProps> = (props) => {
       <div className="flex items-center justify-between text-ant-secondary text-xs">
         <div className="flex min-w-0 items-center gap-1 overflow-hidden">
           {hintKey ? (
-            <KeyHint hintKey={hintKey} onKeyPress={onQuickPaste}>
+            <KeyHint
+              hintKey={hintKey}
+              modifier={ry.quickPasteModifier}
+              onKeyPress={onQuickPaste}
+            >
               {sourceAppIcon}
             </KeyHint>
           ) : (

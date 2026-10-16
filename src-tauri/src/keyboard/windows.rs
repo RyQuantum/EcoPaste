@@ -14,6 +14,7 @@ use winapi::um::winuser::{
     WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
+use super::alt_digits::{self, AltDigitAction};
 use super::NAV_EVENT;
 
 static NAV_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -115,6 +116,7 @@ pub fn disable_navigation_keys() {
         ) {
             log::warn!("emit nav event failed: {err:?}");
         }
+        alt_digits::emit_alt_released(app);
     }
 
     let tid = HOOK_THREAD_ID
@@ -137,6 +139,18 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     let vk = kbd.vkCode;
     let msg = wparam as UINT;
     let ctrl_down = (GetAsyncKeyState(VK_CONTROL) as u16) & 0x8000 != 0;
+
+    if let Some(app) = APP_HANDLE.get() {
+        let action = alt_digits::handle(app, kbd, msg, ctrl_down, |vk| {
+            consumed_keys()
+                .lock()
+                .expect("consumed keys poisoned")
+                .insert(vk);
+        });
+        if let AltDigitAction::Swallow = action {
+            return 1;
+        }
+    }
 
     let is_ctrl = matches!(vk as i32, VK_CONTROL | VK_LCONTROL | VK_RCONTROL);
 
@@ -166,7 +180,10 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
 
     let nav_key = nav_key(vk);
     let preview_key = preview_key(vk);
-    let shortcut_key = if ctrl_down {
+    // 选了 Alt 作为快速粘贴修饰键时，Ctrl + 数字不再拦截，照常交给前台程序。
+    let shortcut_key = if ctrl_down
+        && !(alt_digits::is_digit(vk) && APP_HANDLE.get().is_some_and(alt_digits::alt_mode))
+    {
         ctrl_shortcut_key(vk)
     } else {
         None

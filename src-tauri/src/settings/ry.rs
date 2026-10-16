@@ -10,6 +10,8 @@ const DEFAULT_IMAGE_STORAGE_LIMIT_MB: u32 = 2048;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(default, rename_all = "camelCase")]
 pub struct Ry {
+    /// 列表「修饰键 + 数字」快速粘贴使用的修饰键。
+    pub quick_paste_modifier: QuickPasteModifier,
     /// 历史图片原图总占用上限，单位 MB；超过时删除最旧的普通图片，`0` = 不限。
     pub image_storage_limit_mb: u32,
 }
@@ -17,6 +19,7 @@ pub struct Ry {
 impl Default for Ry {
     fn default() -> Self {
         Self {
+            quick_paste_modifier: QuickPasteModifier::Primary,
             image_storage_limit_mb: DEFAULT_IMAGE_STORAGE_LIMIT_MB,
         }
     }
@@ -31,6 +34,15 @@ impl Ry {
 
         Some(u64::from(self.image_storage_limit_mb) * 1024 * 1024)
     }
+}
+
+/// `Primary` 是平台主修饰键（macOS ⌘ / Windows Ctrl），即上游原有行为。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum QuickPasteModifier {
+    #[default]
+    Primary,
+    Alt,
 }
 
 #[cfg(test)]

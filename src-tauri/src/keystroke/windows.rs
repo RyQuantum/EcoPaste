@@ -17,6 +17,8 @@ const VK_V: u16 = 0x56;
 /// - Ctrl+V 是 Windows / Chromium / Electron / 现代 IDE 输入控件普遍约定，
 ///   与剪贴板内容类型无关，覆盖面最广。
 pub fn simulate_paste() -> Result<()> {
+    super::windows_alt::release_held_alt();
+
     let mut inputs: [INPUT; 4] = unsafe { zeroed() };
 
     // Ctrl 按下

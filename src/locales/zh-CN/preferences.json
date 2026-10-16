@@ -461,6 +461,14 @@
         "plainDefault": {
           "description": "粘贴文本记录时默认去除 HTML/RTF 等格式，只粘贴纯文本。",
           "title": "默认纯文本粘贴"
+        },
+        "quickPasteModifier": {
+          "description": "在剪贴板窗口按住该修饰键，再按 1–9、0 直接粘贴可见的第 1–10 条记录。",
+          "options": {
+            "alt": "Alt",
+            "primary": "Ctrl（macOS 为 ⌘）"
+          },
+          "title": "快速粘贴修饰键"
         }
       },
       "permissions": {

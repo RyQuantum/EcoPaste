@@ -11,6 +11,8 @@
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
+#[cfg(target_os = "windows")]
+mod windows_alt;
 
 #[cfg(target_os = "macos")]
 pub use macos::simulate_paste;
