@@ -7,6 +7,9 @@ mod guard;
 mod icon;
 mod image_quota;
 mod ingest;
+mod merge;
+#[cfg(target_os = "windows")]
+mod merge_hook;
 mod payload;
 mod read;
 mod secrets;

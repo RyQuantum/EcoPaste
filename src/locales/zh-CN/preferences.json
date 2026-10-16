@@ -316,6 +316,18 @@
           "description": "从历史复制记录后，自动隐藏剪贴板窗口。",
           "title": "复制后隐藏窗口"
         },
+        "mergeCopy": {
+          "description": "按住 Ctrl 连按两下 C（间隔 0.5 秒内），把这次复制的文本接在上一条历史后面；中间片段不保留。第二下没有复制出新内容时不触发。",
+          "title": "拼接复制"
+        },
+        "mergeSeparator": {
+          "description": "拼接时插在上一条和新内容之间的分隔符。",
+          "options": {
+            "newline": "换行",
+            "space": "空格"
+          },
+          "title": "拼接分隔符"
+        },
         "plainDefault": {
           "description": "复制文本记录时默认去除 HTML/RTF 等格式，只复制纯文本。",
           "title": "默认复制为纯文本"

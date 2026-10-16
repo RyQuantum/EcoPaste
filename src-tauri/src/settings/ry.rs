@@ -12,6 +12,8 @@ const DEFAULT_IMAGE_STORAGE_LIMIT_MB: u32 = 2048;
 pub struct Ry {
     /// 列表「修饰键 + 数字」快速粘贴使用的修饰键。
     pub quick_paste_modifier: QuickPasteModifier,
+    /// 拼接复制：按住 Ctrl 连按两下 C，把新复制的文本接到上一条历史后面（仅 Windows）。
+    pub merge_copy: MergeCopy,
     /// 历史图片原图总占用上限，单位 MB；超过时删除最旧的普通图片，`0` = 不限。
     pub image_storage_limit_mb: u32,
 }
@@ -20,6 +22,7 @@ impl Default for Ry {
     fn default() -> Self {
         Self {
             quick_paste_modifier: QuickPasteModifier::Primary,
+            merge_copy: MergeCopy::default(),
             image_storage_limit_mb: DEFAULT_IMAGE_STORAGE_LIMIT_MB,
         }
     }
@@ -45,6 +48,39 @@ pub enum QuickPasteModifier {
     Alt,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct MergeCopy {
+    pub enabled: bool,
+    pub separator: MergeSeparator,
+}
+
+impl Default for MergeCopy {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            separator: MergeSeparator::Space,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum MergeSeparator {
+    #[default]
+    Space,
+    Newline,
+}
+
+impl MergeSeparator {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Space => " ",
+            Self::Newline => "\n",
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,6 +94,7 @@ mod tests {
             settings.ry.image_storage_limit_bytes(),
             Some(2048 * 1024 * 1024)
         );
+        assert!(settings.ry.merge_copy.enabled);
     }
 
     #[test]

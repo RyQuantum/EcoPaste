@@ -1,3 +1,5 @@
+import type { Settings } from "@/types/settings";
+import { isWin } from "@/utils/is";
 import type { PreferenceSetting } from "../types/preferences";
 
 /**
@@ -20,6 +22,37 @@ export const RY_PASTE_SETTINGS: PreferenceSetting[] = [
     },
   },
 ];
+
+/** 「复制反馈」分区：拼接复制。键盘钩子目前只有 Windows 实现，macOS 不展示。 */
+export const RY_COPY_SETTINGS: PreferenceSetting[] = isWin
+  ? [
+      {
+        control: { type: "switch" },
+        id: "copy.mergeCopy",
+        keywords: ["merge", "append", "concat", "copy", "ctrl+c"],
+        path: ["ry", "mergeCopy", "enabled"],
+        value: (settings: Settings) => {
+          return settings.ry.mergeCopy.enabled;
+        },
+      },
+      {
+        control: {
+          options: [{ value: "space" }, { value: "newline" }],
+          type: "segmented",
+        },
+        disabledWhen: (settings: Settings) => {
+          return !settings.ry.mergeCopy.enabled;
+        },
+        id: "copy.mergeSeparator",
+        keywords: ["merge", "separator", "space", "newline"],
+        parentId: "copy.mergeCopy",
+        path: ["ry", "mergeCopy", "separator"],
+        value: (settings: Settings) => {
+          return settings.ry.mergeCopy.separator;
+        },
+      },
+    ]
+  : [];
 
 /** 「保留与清理」分区：图片空间上限。 */
 export const RY_HISTORY_SETTINGS: PreferenceSetting[] = [

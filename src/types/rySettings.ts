@@ -6,8 +6,17 @@
 /** Rust enum `QuickPasteModifier`：`primary` 为平台主修饰键（macOS ⌘ / Windows Ctrl）。 */
 export type QuickPasteModifier = "primary" | "alt";
 
+/** Rust enum `MergeSeparator`。 */
+export type MergeSeparator = "space" | "newline";
+
+export interface MergeCopy {
+  enabled: boolean;
+  separator: MergeSeparator;
+}
+
 export interface RySettings {
   quickPasteModifier: QuickPasteModifier;
+  mergeCopy: MergeCopy;
   /** 图片原图总占用上限，单位 MB；`0` = 不限。 */
   imageStorageLimitMb: number;
 }

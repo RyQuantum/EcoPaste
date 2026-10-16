@@ -4,6 +4,7 @@ pub mod groups;
 pub mod image_quota;
 pub mod init;
 pub mod items;
+pub mod latest;
 pub mod models;
 pub mod path;
 pub mod state;

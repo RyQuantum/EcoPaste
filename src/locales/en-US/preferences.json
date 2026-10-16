@@ -316,6 +316,18 @@
           "description": "After copying a history record, automatically hide the clipboard window.",
           "title": "Hide Window After Copy"
         },
+        "mergeCopy": {
+          "description": "Hold Ctrl and press C twice within 0.5 s to append the copied text to the previous history item; the intermediate copy is not kept. Nothing happens if the second press copies nothing.",
+          "title": "Merge copy"
+        },
+        "mergeSeparator": {
+          "description": "Inserted between the previous item and the appended text.",
+          "options": {
+            "newline": "New line",
+            "space": "Space"
+          },
+          "title": "Merge separator"
+        },
         "plainDefault": {
           "description": "When copying text records, strip HTML/RTF formatting and copy plain text by default.",
           "title": "Copy as Plain Text by Default"

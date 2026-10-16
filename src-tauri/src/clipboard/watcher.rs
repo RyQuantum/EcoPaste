@@ -197,6 +197,7 @@ pub fn init(app: &AppHandle) -> crate::core::Result<()> {
     }
 
     super::cleanup::spawn(app.clone());
+    super::merge::init(app);
     spawn_watch_thread(app.clone(), guard, store, app_icon_store, registry, pause);
     Ok(())
 }
@@ -344,18 +345,8 @@ impl ClipboardHandler for ClipboardChangeHandler {
         }
 
         // 入库与 emit 交给异步运行时；只移动 Send 数据，不碰平台句柄。
-        let app = self.app.clone();
-        tauri::async_runtime::spawn(async move {
-            let pool = app.state::<crate::db::DatabaseState>().pool().await;
-            if let Err(err) = persist_and_notify(&app, &pool, &item, source_app.as_ref()).await {
-                log::error!("clipboard watcher: persist failed: {err}");
-                return;
-            }
-            // 新图片入库后检查一次图片总占用上限（fork 补丁）。
-            if item.kind == crate::db::models::ClipboardKind::Image {
-                super::image_quota::enforce(&app).await;
-            }
-        });
+        // 先经拼接复制判定（可能暂扣或拼接），再入库。
+        super::merge::dispatch(&self.app, item, source_app);
     }
 }
 
