@@ -249,8 +249,10 @@ impl PasteData {
             .collect()
     }
 
-    /// Interprets a received paste. Text-like types fall back to any plain
-    /// text item in the collection (HTML and RTF copies carry one).
+    /// Interprets a received paste. Images become files to pull; every other
+    /// non-file paste falls back to its plain text item (HTML and RTF copies
+    /// carry one, and CrossPaste files "123" as a color with the text alongside),
+    /// then to a URL, then to the color as `#RRGGBB`.
     pub fn content(&self) -> RemoteContent {
         let items = self.all_items();
         match self.paste_type {
@@ -263,27 +265,45 @@ impl PasteData {
                     return RemoteContent::Images(files);
                 }
             }
-            PASTE_TYPE_TEXT | PASTE_TYPE_URL | PASTE_TYPE_HTML | PASTE_TYPE_RTF => {
-                let text = items
-                    .iter()
-                    .find(|v| item_type(v) == Some("text"))
-                    .and_then(|v| v.get("text"))
-                    .or_else(|| {
-                        items
-                            .iter()
-                            .find(|v| item_type(v) == Some("url"))
-                            .and_then(|v| v.get("url"))
-                    })
-                    .and_then(Value::as_str);
-                if let Some(text) = text {
-                    if !text.is_empty() {
-                        return RemoteContent::Text(text.to_string());
-                    }
+            PASTE_TYPE_FILE => {}
+            _ => {
+                let field = |kind: &str, key: &str| {
+                    items
+                        .iter()
+                        .find(|v| item_type(v) == Some(kind))
+                        .and_then(|v| v.get(key))
+                        .and_then(Value::as_str)
+                        .filter(|t| !t.is_empty())
+                        .map(str::to_string)
+                };
+                let color = || {
+                    items
+                        .iter()
+                        .find(|v| item_type(v) == Some("color"))
+                        .and_then(|v| v.get("color"))
+                        .and_then(Value::as_i64)
+                        .map(color_hex)
+                };
+                if let Some(text) = field("text", "text")
+                    .or_else(|| field("url", "url"))
+                    .or_else(color)
+                {
+                    return RemoteContent::Text(text);
                 }
             }
-            _ => {}
         }
         RemoteContent::Unsupported(self.paste_type)
+    }
+}
+
+/// CrossPaste stores colors as a signed ARGB int.
+fn color_hex(argb: i64) -> String {
+    let v = argb as u32;
+    let (a, rgb) = (v >> 24, v & 0x00ff_ffff);
+    if a == 0xff {
+        format!("#{rgb:06X}")
+    } else {
+        format!("#{rgb:06X}{a:02X}")
     }
 }
 
@@ -394,6 +414,39 @@ mod tests {
         });
         let p: PasteData = serde_json::from_value(raw).unwrap();
         assert_eq!(p.content(), RemoteContent::Text("x".into()));
+    }
+
+    /// Exactly what CrossPaste 2.2.1 on the Mac sent for a copied "123".
+    #[test]
+    fn digits_filed_as_a_color_are_received_as_text() {
+        let raw = json!({
+            "id": 2556, "appInstanceId": "mac", "favorite": false,
+            "pasteAppearItem": {"type": "color", "identifiers": ["Unicode String"], "hash": "-15654349", "size": 8, "color": -15654349, "extraInfo": null},
+            "pasteCollection": {"pasteItems": [{"type": "text", "identifiers": ["Unicode String"], "hash": "e8e4d93e85ee19218c29e57f658253af", "size": 3, "text": "123", "extraInfo": null}]},
+            "pasteType": 6, "source": null, "size": 11, "hash": "-15654349"
+        });
+        let p: PasteData = serde_json::from_value(raw).unwrap();
+        assert_eq!(p.content(), RemoteContent::Text("123".into()));
+    }
+
+    #[test]
+    fn a_bare_color_becomes_its_hex_code() {
+        let raw = json!({
+            "id": 1, "appInstanceId": "mac",
+            "pasteAppearItem": {"type": "color", "identifiers": [], "hash": "h", "size": 8, "color": -15654349},
+            "pasteType": 6, "size": 8, "hash": "h"
+        });
+        let p: PasteData = serde_json::from_value(raw).unwrap();
+        assert_eq!(p.content(), RemoteContent::Text("#112233".into()));
+        assert_eq!(color_hex(0x80112233), "#11223380");
+    }
+
+    #[test]
+    fn files_stay_unsupported() {
+        let raw = json!({"id": 1, "appInstanceId": "mac", "pasteType": 3, "size": 1, "hash": "h",
+            "pasteCollection": {"pasteItems": [{"type": "text", "text": "x"}]}});
+        let p: PasteData = serde_json::from_value(raw).unwrap();
+        assert_eq!(p.content(), RemoteContent::Unsupported(3));
     }
 
     #[test]

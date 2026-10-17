@@ -628,7 +628,7 @@ impl Inner {
                     }
                 }
                 RemoteContent::Unsupported(t) => {
-                    debug!("crosspaste: ignoring paste type {t} from {from}")
+                    info!("crosspaste: ignoring unsupported paste type {t} from {from}")
                 }
             }
         });
