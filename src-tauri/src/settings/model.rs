@@ -458,6 +458,8 @@ pub enum MiddleClickAction {
     SingleClickPastePlain,
     SingleClickCopy,
     SingleClickCopyPlain,
+    /// fork 补丁：图片用截图工具、文字用设置里的编辑器、文件用默认程序打开。
+    SingleClickOpen,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

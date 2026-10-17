@@ -322,7 +322,11 @@
         },
         "lanSyncSound": {
           "description": "收到其他设备的内容时播放提示音：可以关掉、只在收到图片时响（默认），或文字图片都响。默认是内置的两声短音；把音效文件命名为 receive.wav（也可以是 .aiff、.mp3）放进数据目录的 config\\sounds 文件夹，就改用它，例如 CrossPaste 自带的 Blow.wav。",
-          "options": { "all": "文字和图片", "images": "仅图片", "off": "关" },
+          "options": {
+            "all": "文字和图片",
+            "images": "仅图片",
+            "off": "关"
+          },
           "title": "收到内容提示音"
         },
         "mergeCopy": {
@@ -478,10 +482,21 @@
             "disabled": "禁用",
             "singleClickCopy": "复制",
             "singleClickCopyPlain": "复制为纯文本",
+            "singleClickOpen": "打开",
             "singleClickPaste": "粘贴",
             "singleClickPastePlain": "粘贴为纯文本"
           },
           "title": "鼠标中键"
+        },
+        "openTextWith": {
+          "description": "鼠标中键选「打开」时，文字会写进一个临时文件，用这里选的程序打开；图片用截图工具，文件用默认程序。临时文件放在系统临时目录的 EcoPaste-open 文件夹，超过一天自动删除，想留就在编辑器里另存为。",
+          "options": {
+            "default": "系统默认程序",
+            "neovim": "Neovim（在 Windows Terminal 里）",
+            "notepad": "记事本",
+            "vscode": "VS Code"
+          },
+          "title": "打开文字用的程序"
         },
         "plainDefault": {
           "description": "粘贴文本记录时默认去除 HTML/RTF 等格式，只粘贴纯文本。",

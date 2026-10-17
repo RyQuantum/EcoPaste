@@ -16,6 +16,9 @@ export interface MergeCopy {
 }
 
 /** 局域网同步（CrossPaste 协议）。`enabled` 改动后重启生效。 */
+/** Rust enum `OpenTextApp`：中键「打开」文字时用的编辑器；`default` 为系统给 .txt 关联的程序。 */
+export type OpenTextApp = "notepad" | "vscode" | "neovim" | "default";
+
 /** Rust enum `ReceiveSound`：收到内容时何时响；`images` 只在收到图片时响。 */
 export type ReceiveSound = "off" | "images" | "all";
 
@@ -30,4 +33,5 @@ export interface RySettings {
   /** 图片原图总占用上限，单位 MB；`0` = 不限。 */
   imageStorageLimitMb: number;
   lanSync: LanSync;
+  openTextWith: OpenTextApp;
 }

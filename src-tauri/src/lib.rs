@@ -118,6 +118,7 @@ pub fn run() {
             commands::get_clipboard_app_icon_path,
             commands::save_clipboard_image_to_file,
             commands::open_clipboard_image,
+            commands::open_clipboard_item,
             commands::get_file_icon_path,
             commands::write_to_clipboard,
             commands::paste_clipboard_item,

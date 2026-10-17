@@ -19,6 +19,7 @@ import {
   hideWindow,
   listClipboardGroups,
   openClipboardImage,
+  openClipboardItem,
   openClipboardItemLink,
   pasteClipboardItem,
   revealClipboardItem,
@@ -965,6 +966,13 @@ const List: FC = () => {
           setSelectedId(item.id);
           closePreview("middleClickCopyPlain");
           writeToClipboard(item.id, true);
+          return;
+        }
+
+        if (middleClick === "singleClickOpen") {
+          setSelectedId(item.id);
+          closePreview("middleClickOpen");
+          openClipboardItem(item.id);
         }
 
         return;

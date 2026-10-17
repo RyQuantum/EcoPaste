@@ -482,10 +482,21 @@
             "disabled": "Disabled",
             "singleClickCopy": "Copy",
             "singleClickCopyPlain": "Copy as Plain Text",
+            "singleClickOpen": "Open",
             "singleClickPaste": "Paste",
             "singleClickPastePlain": "Paste as Plain Text"
           },
           "title": "Middle Mouse Button"
+        },
+        "openTextWith": {
+          "description": "When the middle mouse button is set to Open, text is written to a temporary file and opened with this program; images open in Snipping Tool, files in their default app. Temporary files live in the EcoPaste-open folder of the system temp directory and are deleted after a day; use Save As in the editor to keep one.",
+          "options": {
+            "default": "System default",
+            "neovim": "Neovim (in Windows Terminal)",
+            "notepad": "Notepad",
+            "vscode": "VS Code"
+          },
+          "title": "Open Text With"
         },
         "plainDefault": {
           "description": "When pasting text records, strip HTML/RTF formatting and paste plain text by default.",

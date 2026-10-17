@@ -958,6 +958,17 @@ export const openClipboardImage = (id: string) => {
 };
 
 /**
+ * 中键「打开」：图片用截图工具，文字写临时文件后用设置里的编辑器，文件用默认程序。fork 补丁。
+ */
+export const openClipboardItem = (id: string) => {
+  return call<void>(
+    TAURI_COMMAND.OPEN_CLIPBOARD_ITEM,
+    "commands:labels.openItem",
+    { id },
+  );
+};
+
+/**
  * 在系统文件管理器中定位条目对应文件；Rust 侧自动按 kind 提路径（files 取首个，text 取 content）。
  */
 export const revealClipboardItem = (id: string) => {

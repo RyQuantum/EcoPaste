@@ -20,6 +20,8 @@ pub struct Ry {
     pub image_storage_limit_mb: u32,
     /// 局域网同步：和其他机器上的 CrossPaste 互传文字和图片（`crosspaste-rs`）。
     pub lan_sync: LanSync,
+    /// 中键「打开」文字时用的编辑器（图片固定用截图工具）。
+    pub open_text_with: OpenTextApp,
 }
 
 impl Default for Ry {
@@ -29,6 +31,7 @@ impl Default for Ry {
             merge_copy: MergeCopy::default(),
             image_storage_limit_mb: DEFAULT_IMAGE_STORAGE_LIMIT_MB,
             lan_sync: LanSync::default(),
+            open_text_with: OpenTextApp::default(),
         }
     }
 }
@@ -89,6 +92,17 @@ impl Default for LanSync {
             sound: ReceiveSound::Images,
         }
     }
+}
+
+/// 打开文字用的程序。`Default` 是系统给 .txt 关联的程序。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum OpenTextApp {
+    #[default]
+    Notepad,
+    Vscode,
+    Neovim,
+    Default,
 }
 
 /// 收到内容时什么情况下播放提示音。

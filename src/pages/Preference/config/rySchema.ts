@@ -94,6 +94,33 @@ export const RY_COPY_SETTINGS: PreferenceSetting[] = isWin
     ]
   : [];
 
+/** 「粘贴行为」分区：中键「打开」文字时用的编辑器（图片固定用截图工具）。只在 Windows 显示。 */
+export const RY_PASTE_SETTINGS: PreferenceSetting[] = isWin
+  ? [
+      {
+        control: {
+          options: [
+            { value: "notepad" },
+            { value: "vscode" },
+            { value: "neovim" },
+            { value: "default" },
+          ],
+          type: "select",
+        },
+        disabledWhen: (settings: Settings) => {
+          return settings.clipboard.content.middleClick !== "singleClickOpen";
+        },
+        id: "paste.openTextWith",
+        keywords: ["open", "editor", "notepad", "vscode", "neovim", "middle"],
+        parentId: "paste.middleClick",
+        path: ["ry", "openTextWith"],
+        value: (settings: Settings) => {
+          return settings.ry.openTextWith;
+        },
+      },
+    ]
+  : [];
+
 /** 「保留与清理」分区：图片空间上限。 */
 export const RY_HISTORY_SETTINGS: PreferenceSetting[] = [
   {

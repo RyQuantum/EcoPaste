@@ -11,6 +11,7 @@ import type { PreferenceSetting, PreferenceTab } from "../types/preferences";
 import {
   RY_COPY_SETTINGS,
   RY_HISTORY_SETTINGS,
+  RY_PASTE_SETTINGS,
   RY_SHORTCUT_SETTINGS,
 } from "./rySchema";
 
@@ -27,6 +28,7 @@ const MIDDLE_CLICK_ACTION_OPTIONS = [
   { value: "singleClickPastePlain" },
   { value: "singleClickCopy" },
   { value: "singleClickCopyPlain" },
+  { value: "singleClickOpen" },
 ];
 const CLIPBOARD_SORT_OPTIONS = [
   { value: "createdAtDesc" },
@@ -283,6 +285,7 @@ export const preferenceTabs: PreferenceTab[] = [
               return settings.clipboard.content.middleClick;
             },
           },
+          ...RY_PASTE_SETTINGS,
           {
             control: { type: "switch" },
             id: "paste.plainDefault",

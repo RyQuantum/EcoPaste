@@ -33,7 +33,8 @@ export type MiddleClickAction =
   | "singleClickPaste"
   | "singleClickPastePlain"
   | "singleClickCopy"
-  | "singleClickCopyPlain";
+  | "singleClickCopyPlain"
+  | "singleClickOpen";
 
 export type ItemAction =
   | "paste"

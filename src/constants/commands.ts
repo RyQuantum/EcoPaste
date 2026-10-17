@@ -45,6 +45,7 @@ export const TAURI_COMMAND = {
   LIST_CLIPBOARD_ITEMS: "list_clipboard_items",
   NOTIFY_WINDOW_READY: "notify_window_ready",
   OPEN_CLIPBOARD_IMAGE: "open_clipboard_image",
+  OPEN_CLIPBOARD_ITEM: "open_clipboard_item",
   OPEN_CLIPBOARD_ITEM_LINK: "open_clipboard_item_link",
   OPEN_EXTERNAL_URL: "open_external_url",
   OPEN_ONBOARDING: "open_onboarding",
