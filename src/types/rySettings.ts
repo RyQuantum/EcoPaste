@@ -15,9 +15,16 @@ export interface MergeCopy {
   sound: boolean;
 }
 
+/** 局域网同步（CrossPaste 协议）。`enabled` 改动后重启生效。 */
+export interface LanSync {
+  enabled: boolean;
+  sound: boolean;
+}
+
 export interface RySettings {
   windowModifier: WindowModifier;
   mergeCopy: MergeCopy;
   /** 图片原图总占用上限，单位 MB；`0` = 不限。 */
   imageStorageLimitMb: number;
+  lanSync: LanSync;
 }

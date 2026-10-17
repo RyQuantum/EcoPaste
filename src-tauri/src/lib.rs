@@ -214,6 +214,7 @@ pub fn run() {
                 })?;
                 handle_db.manage(db::DatabaseState::new(pool));
                 clipboard::init(&handle_db)?;
+                clipboard::init_lan_sync(&handle_db);
                 Ok::<_, anyhow::Error>(())
             })?;
 

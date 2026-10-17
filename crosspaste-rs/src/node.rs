@@ -913,6 +913,12 @@ impl Node {
         out
     }
 
+    /// Whether any paired device is currently connected (lets callers skip
+    /// expensive preparation such as image transcoding).
+    pub fn has_connected_peers(&self) -> bool {
+        !self.inner.connected_peers().is_empty()
+    }
+
     /// Sends text to every connected peer.
     pub async fn send_text(&self, text: &str) {
         if text.is_empty() {

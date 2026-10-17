@@ -350,6 +350,7 @@ fn persist_all(app: AppHandle, items: Vec<Pending>) {
                 log::error!("clipboard watcher: persist failed: {err}");
                 continue;
             }
+            super::lan_sync::on_local_item(&app, &pending.item);
             if is_image {
                 super::image_quota::enforce(&app).await;
             }
@@ -416,6 +417,7 @@ async fn merge_into_latest(
         log::error!("merge copy: persist merged item failed: {err}");
         return;
     }
+    super::lan_sync::on_local_item(app, &merged);
 
     if sound {
         super::merge_sound::play(app);

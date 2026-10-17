@@ -316,6 +316,14 @@
           "description": "After copying a history record, automatically hide the clipboard window.",
           "title": "Hide Window After Copy"
         },
+        "lanSync": {
+          "description": "Sync text and images with CrossPaste on other machines in the local network. The other device starts pairing: pick this machine in its CrossPaste device list, then enter the 6-digit code EcoPaste shows. Restart EcoPaste after changing this.",
+          "title": "LAN sync (CrossPaste)"
+        },
+        "lanSyncSound": {
+          "description": "Play a sound when content arrives from another device. The built-in sound is two short tones; put a file named receive.wav (or .aiff / .mp3) in the config\\sounds folder of the data directory to use it instead, e.g. CrossPaste's Blow.wav.",
+          "title": "Receive sound"
+        },
         "mergeCopy": {
           "description": "Hold Ctrl and press C twice within 0.5 s to append the copied text to the previous history item; the intermediate copy is not kept. Nothing happens if the second press copies nothing.",
           "title": "Merge copy"

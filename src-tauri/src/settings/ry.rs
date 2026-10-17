@@ -18,6 +18,8 @@ pub struct Ry {
     pub merge_copy: MergeCopy,
     /// 历史图片原图总占用上限，单位 MB；超过时删除最旧的普通图片，`0` = 不限。
     pub image_storage_limit_mb: u32,
+    /// 局域网同步：和其他机器上的 CrossPaste 互传文字和图片（`crosspaste-rs`）。
+    pub lan_sync: LanSync,
 }
 
 impl Default for Ry {
@@ -26,6 +28,7 @@ impl Default for Ry {
             window_modifier: WindowModifier::Primary,
             merge_copy: MergeCopy::default(),
             image_storage_limit_mb: DEFAULT_IMAGE_STORAGE_LIMIT_MB,
+            lan_sync: LanSync::default(),
         }
     }
 }
@@ -70,6 +73,24 @@ impl Default for MergeCopy {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct LanSync {
+    /// 启动时开启同步服务；改动后重启 EcoPaste 生效。
+    pub enabled: bool,
+    /// 收到其他设备的内容时播放提示音。
+    pub sound: bool,
+}
+
+impl Default for LanSync {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            sound: true,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum MergeSeparator {
@@ -101,6 +122,8 @@ mod tests {
             Some(2048 * 1024 * 1024)
         );
         assert!(settings.ry.merge_copy.enabled);
+        assert!(settings.ry.lan_sync.enabled);
+        assert!(settings.ry.lan_sync.sound);
     }
 
     #[test]

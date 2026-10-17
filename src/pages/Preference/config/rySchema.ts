@@ -66,6 +66,28 @@ export const RY_COPY_SETTINGS: PreferenceSetting[] = isWin
           return settings.ry.mergeCopy.sound;
         },
       },
+      {
+        control: { type: "switch" },
+        id: "copy.lanSync",
+        keywords: ["sync", "lan", "crosspaste", "mac", "device", "network"],
+        path: ["ry", "lanSync", "enabled"],
+        value: (settings: Settings) => {
+          return settings.ry.lanSync.enabled;
+        },
+      },
+      {
+        control: { type: "switch" },
+        disabledWhen: (settings: Settings) => {
+          return !settings.ry.lanSync.enabled;
+        },
+        id: "copy.lanSyncSound",
+        keywords: ["sync", "sound", "receive", "crosspaste"],
+        parentId: "copy.lanSync",
+        path: ["ry", "lanSync", "sound"],
+        value: (settings: Settings) => {
+          return settings.ry.lanSync.sound;
+        },
+      },
     ]
   : [];
 

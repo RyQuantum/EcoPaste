@@ -316,6 +316,14 @@
           "description": "从历史复制记录后，自动隐藏剪贴板窗口。",
           "title": "复制后隐藏窗口"
         },
+        "lanSync": {
+          "description": "和局域网里其他机器上的 CrossPaste 互相同步文字和图片。配对由对方发起：在 Mac 或 Steam Deck 的 CrossPaste 设备列表里点这台机器，再输入 EcoPaste 弹出的 6 位数。改动后重启 EcoPaste 生效。",
+          "title": "局域网同步（CrossPaste）"
+        },
+        "lanSyncSound": {
+          "description": "收到其他设备的内容时播放提示音。默认是内置的两声短音；把音效文件命名为 receive.wav（也可以是 .aiff、.mp3）放进数据目录的 config\\sounds 文件夹，就改用它，例如 CrossPaste 自带的 Blow.wav。",
+          "title": "收到内容提示音"
+        },
         "mergeCopy": {
           "description": "按住 Ctrl 连按两下 C（间隔 0.5 秒内），把这次复制的文本接在上一条历史后面；中间片段不保留。第二下没有复制出新内容时不触发。",
           "title": "拼接复制"
