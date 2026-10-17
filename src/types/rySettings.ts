@@ -16,9 +16,12 @@ export interface MergeCopy {
 }
 
 /** 局域网同步（CrossPaste 协议）。`enabled` 改动后重启生效。 */
+/** Rust enum `ReceiveSound`：收到内容时何时响；`images` 只在收到图片时响。 */
+export type ReceiveSound = "off" | "images" | "all";
+
 export interface LanSync {
   enabled: boolean;
-  sound: boolean;
+  sound: ReceiveSound;
 }
 
 export interface RySettings {

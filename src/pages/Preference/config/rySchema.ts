@@ -76,7 +76,10 @@ export const RY_COPY_SETTINGS: PreferenceSetting[] = isWin
         },
       },
       {
-        control: { type: "switch" },
+        control: {
+          options: [{ value: "off" }, { value: "images" }, { value: "all" }],
+          type: "segmented",
+        },
         disabledWhen: (settings: Settings) => {
           return !settings.ry.lanSync.enabled;
         },

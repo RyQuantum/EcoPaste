@@ -321,7 +321,12 @@
           "title": "LAN sync (CrossPaste)"
         },
         "lanSyncSound": {
-          "description": "Play a sound when content arrives from another device. The built-in sound is two short tones; put a file named receive.wav (or .aiff / .mp3) in the config\\sounds folder of the data directory to use it instead, e.g. CrossPaste's Blow.wav.",
+          "description": "Play a sound when content arrives from another device: off, images only (default), or text and images. The built-in sound is two short tones; put a file named receive.wav (or .aiff / .mp3) in the config\\sounds folder of the data directory to use it instead, e.g. CrossPaste's Blow.wav.",
+          "options": {
+            "all": "Text and images",
+            "images": "Images only",
+            "off": "Off"
+          },
           "title": "Receive sound"
         },
         "mergeCopy": {

@@ -78,15 +78,64 @@ impl Default for MergeCopy {
 pub struct LanSync {
     /// 启动时开启同步服务；改动后重启 EcoPaste 生效。
     pub enabled: bool,
-    /// 收到其他设备的内容时播放提示音。
-    pub sound: bool,
+    /// 收到其他设备的内容时播放提示音。ry.9 ~ ry.11 存的是布尔值，读取时兼容。
+    pub sound: ReceiveSound,
 }
 
 impl Default for LanSync {
     fn default() -> Self {
         Self {
             enabled: true,
-            sound: true,
+            sound: ReceiveSound::Images,
+        }
+    }
+}
+
+/// 收到内容时什么情况下播放提示音。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", from = "ReceiveSoundRepr")]
+pub enum ReceiveSound {
+    Off,
+    /// 只在收到图片时响；文字静默。
+    #[default]
+    Images,
+    All,
+}
+
+impl ReceiveSound {
+    pub fn plays_for_image(self) -> bool {
+        self != Self::Off
+    }
+
+    pub fn plays_for_text(self) -> bool {
+        self == Self::All
+    }
+}
+
+/// 旧版本写下的 `true` / `false` 和新版本的字符串都能读。
+#[derive(Deserialize)]
+#[serde(untagged)]
+enum ReceiveSoundRepr {
+    Legacy(bool),
+    Named(ReceiveSoundName),
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum ReceiveSoundName {
+    Off,
+    Images,
+    All,
+}
+
+impl From<ReceiveSoundRepr> for ReceiveSound {
+    fn from(repr: ReceiveSoundRepr) -> Self {
+        match repr {
+            ReceiveSoundRepr::Legacy(true) => Self::Images,
+            ReceiveSoundRepr::Legacy(false) => Self::Off,
+            ReceiveSoundRepr::Named(ReceiveSoundName::Off) => Self::Off,
+            ReceiveSoundRepr::Named(ReceiveSoundName::Images) => Self::Images,
+            ReceiveSoundRepr::Named(ReceiveSoundName::All) => Self::All,
         }
     }
 }
@@ -123,7 +172,23 @@ mod tests {
         );
         assert!(settings.ry.merge_copy.enabled);
         assert!(settings.ry.lan_sync.enabled);
-        assert!(settings.ry.lan_sync.sound);
+        assert_eq!(settings.ry.lan_sync.sound, ReceiveSound::Images);
+    }
+
+    #[test]
+    fn receive_sound_reads_the_old_boolean_and_writes_a_name() {
+        let on: LanSync = serde_json::from_str(r#"{ "enabled": true, "sound": true }"#).unwrap();
+        let off: LanSync = serde_json::from_str(r#"{ "sound": false }"#).unwrap();
+        let all: LanSync = serde_json::from_str(r#"{ "sound": "all" }"#).unwrap();
+
+        assert_eq!(on.sound, ReceiveSound::Images);
+        assert_eq!(off.sound, ReceiveSound::Off);
+        assert_eq!(all.sound, ReceiveSound::All);
+        assert!(serde_json::to_string(&on)
+            .unwrap()
+            .contains(r#""sound":"images""#));
+        assert!(!ReceiveSound::Images.plays_for_text());
+        assert!(ReceiveSound::Images.plays_for_image());
     }
 
     #[test]

@@ -283,9 +283,15 @@ async fn receive_image(app: &AppHandle, path: PathBuf) {
     }
 }
 
-/// 入库、写进系统剪贴板、提示音。
+/// 入库、写进系统剪贴板，按设置播放提示音（默认只有图片响）。
 async fn persist_and_write(app: &AppHandle, payload: ClipboardPayload) {
     let settings = settings_snapshot(app);
+    let sound = settings.ry.lan_sync.sound;
+    let play_sound = if matches!(payload, ClipboardPayload::Image(_)) {
+        sound.plays_for_image()
+    } else {
+        sound.plays_for_text()
+    };
     let Some(store) = app.try_state::<ImageStore>().map(|s| s.inner().clone()) else {
         return;
     };
@@ -335,7 +341,7 @@ async fn persist_and_write(app: &AppHandle, payload: ClipboardPayload) {
         }
     }
 
-    if settings.ry.lan_sync.sound {
+    if play_sound {
         super::merge_sound::play_receive(app);
     }
 }
