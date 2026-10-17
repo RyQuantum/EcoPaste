@@ -97,7 +97,7 @@ jobs:
           echo "REF_DATA=$data" >> "$GITHUB_ENV"
           nohup "$exe" --headless > "$RUNNER_TEMP/referee.log" 2>&1 &
           for _ in $(seq 1 120); do
-            endpoint="$(find "$data" -name cli-endpoint.json 2>/dev/null | head -n 1)"
+            endpoint="$(find "$data" -name cli-endpoint.json 2>/dev/null | head -n 1 || true)"
             if [ -n "$endpoint" ]; then
               echo "REF_SOCK=$(jq -r .socketPath "$endpoint")" >> "$GITHUB_ENV"
               exit 0
