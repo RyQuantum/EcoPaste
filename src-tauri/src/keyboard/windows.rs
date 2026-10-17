@@ -15,6 +15,7 @@ use winapi::um::winuser::{
 };
 
 use super::alt_as_ctrl;
+use super::deskflow;
 use super::NAV_EVENT;
 
 static NAV_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -72,6 +73,7 @@ fn preview_key(vk: u32) -> Option<&'static str> {
 
 pub fn enable_navigation_keys(app: &AppHandle) {
     let _ = APP_HANDLE.set(app.clone());
+    deskflow::start();
     NAV_ENABLED.store(true, Ordering::Relaxed);
     alt_as_ctrl::sync_held_alt(app);
 
@@ -132,6 +134,14 @@ pub fn disable_navigation_keys() {
     }
 }
 
+fn is_consumed_release(vk: u32, msg: UINT) -> bool {
+    (msg == WM_KEYUP || msg == WM_SYSKEYUP)
+        && consumed_keys()
+            .lock()
+            .expect("consumed keys poisoned")
+            .contains(&vk)
+}
+
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code < 0 || !NAV_ENABLED.load(Ordering::Relaxed) {
         return CallNextHookEx(null_mut(), code, wparam, lparam);
@@ -140,6 +150,13 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     let kbd = &*(lparam as *const KBDLLHOOKSTRUCT);
     let vk = kbd.vkCode;
     let msg = wparam as UINT;
+    // 鼠标经 Deskflow 切到了别的电脑：按键属于那台电脑，原样交给后面的 Deskflow 钩子。
+    // 例外是在本机按下时被吞掉的键，它的松开仍走下面的 consumed_keys 分支收尾。
+    if !deskflow::is_local() && !is_consumed_release(vk, msg) {
+        alt_as_ctrl::release();
+        return CallNextHookEx(null_mut(), code, wparam, lparam);
+    }
+
     // 设置选了 Alt 时，Alt 被吞掉并改为注入 Ctrl（见 alt_as_ctrl.rs）。
     if let Some(app) = APP_HANDLE.get() {
         match alt_as_ctrl::handle_alt_key(app, kbd, msg) {

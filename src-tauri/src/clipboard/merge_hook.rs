@@ -3,6 +3,7 @@
 //!
 //! 与 `keyboard/`（剪贴板窗口可见时才装、会吞导航键）不同，本钩子常驻且从不吞键。
 //! 钩子回调里只做加锁改状态，不做 IO，避免拖慢系统输入（超时的低级钩子会被系统摘掉）。
+//! 鼠标经 Deskflow 切到别的电脑时不计数：那边的 Ctrl+C 与本机剪贴板无关。
 
 use std::ptr::null_mut;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -15,16 +16,20 @@ use winapi::um::winuser::{
 };
 
 use super::merge;
+use crate::keyboard::deskflow;
 
 const VK_C: i32 = 0x43;
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+static WAS_LOCAL: AtomicBool = AtomicBool::new(true);
 
 /// 起一个常驻线程装钩子并跑消息泵；重复调用无副作用。
 pub fn start() {
     if STARTED.swap(true, Ordering::SeqCst) {
         return;
     }
+
+    deskflow::start();
 
     let spawned = std::thread::Builder::new()
         .name("merge-copy-hook".to_owned())
@@ -51,8 +56,16 @@ fn is_down(vk: i32) -> bool {
 
 unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
     if code >= 0 {
-        let kbd = &*(lparam as *const KBDLLHOOKSTRUCT);
-        handle_key(kbd.vkCode as i32, wparam as UINT);
+        let local = deskflow::is_local();
+        // 刚切走：按 Ctrl 已松开收尾，暂扣的条目照常入库。
+        if WAS_LOCAL.swap(local, Ordering::Relaxed) && !local {
+            merge::on_ctrl(false);
+        }
+
+        if local {
+            let kbd = &*(lparam as *const KBDLLHOOKSTRUCT);
+            handle_key(kbd.vkCode as i32, wparam as UINT);
+        }
     }
 
     CallNextHookEx(null_mut(), code, wparam, lparam)
