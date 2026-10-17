@@ -33,3 +33,11 @@ the same version or CrossPaste shows the device as incompatible.
 events as JSON lines and reads commands from stdin (`devices`, `add <host> <port>`,
 `text <s>`, `image <path>`, `pair <id>`, `pair-finish <id> <code>`, `reject <id>`,
 `unpair <id>`, `quit`). `CPRS_LOOPBACK=1` listens on 127.0.0.1 without mDNS.
+
+## Tests
+
+- `cargo test`: unit tests; hash vectors come from CrossPaste's own `CodecsUtils`.
+- `tests/interop.py`: two `cprs` peers against an official CrossPaste running `--headless`,
+  driven over its CLI socket: pairing both directions, text both ways, a two-chunk image
+  through CrossPaste's relay. CI runs it in `.github/workflows/ry-crosspaste.yml` against the
+  version pinned in `UPSTREAM` (and weekly against the latest release).

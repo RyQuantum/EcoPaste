@@ -1,0 +1,162 @@
+# Fork-only (RyQuantum/EcoPaste): tests for crosspaste-rs, the CrossPaste LAN sync subset.
+#
+# Layer 1: fmt, clippy and unit tests of crosspaste-rs.
+# Layer 2: two `cprs` peers sync text and images with an official CrossPaste running
+#          headless on this Linux runner (crosspaste-rs/tests/interop.py).
+# Upstream watch (scheduled / manual): the latest CrossPaste release is tested too, and the
+# job fails when SyncApi.VERSION changed or protocol code changed since crosspaste-rs/UPSTREAM.
+#
+# Called by ry-windows.yml before every fork release (pinned CrossPaste version).
+# The weekly schedule only fires from the repository's default branch.
+name: RY CrossPaste interop
+
+on:
+  workflow_call:
+    inputs:
+      release_gate:
+        description: "Called before a release: skip the upstream watch, test the pinned version only"
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      crosspaste_tag:
+        description: "CrossPaste release tag to test against (empty = crosspaste-rs/UPSTREAM)"
+        required: false
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: crosspaste-rs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.96.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crosspaste-rs
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --release --bin cprs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cprs-linux
+          path: crosspaste-rs/target/release/cprs
+          if-no-files-found: error
+
+  interop:
+    needs: unit
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: ${{ github.event_name == 'schedule' && fromJSON('["pinned", "latest"]') || fromJSON('["pinned"]') }}
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: cprs-linux
+          path: bin
+      - name: Resolve CrossPaste version
+        id: tag
+        run: |
+          set -euo pipefail
+          if [ -n "${{ inputs.crosspaste_tag }}" ]; then
+            tag="${{ inputs.crosspaste_tag }}"
+          elif [ "${{ matrix.target }}" = "latest" ]; then
+            tag="$(gh release view -R CrossPaste/crosspaste-desktop --json tagName --jq .tagName)"
+          else
+            tag="$(tr -d '[:space:]' < crosspaste-rs/UPSTREAM)"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Testing against CrossPaste $tag"
+      - name: Download CrossPaste for Linux
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cp" && cd "$RUNNER_TEMP/cp"
+          gh release download "${{ steps.tag.outputs.tag }}" -R CrossPaste/crosspaste-desktop -p '*-linux-amd64.tar.gz'
+          tar -xzf ./*-linux-amd64.tar.gz
+      - name: Start CrossPaste headless
+        run: |
+          set -euo pipefail
+          exe="$(find "$RUNNER_TEMP/cp" -path '*/bin/crosspaste' -type f | head -n 1)"
+          [ -n "$exe" ] || { echo "::error::bin/crosspaste not found in the tarball"; exit 1; }
+          export HOME="$RUNNER_TEMP/refhome"
+          mkdir -p "$HOME"
+          nohup "$exe" --headless > "$RUNNER_TEMP/referee.log" 2>&1 &
+          for _ in $(seq 1 120); do
+            endpoint="$(find "$HOME" -name cli-endpoint.json 2>/dev/null | head -n 1)"
+            if [ -n "$endpoint" ]; then
+              echo "REF_SOCK=$(jq -r .socketPath "$endpoint")" >> "$GITHUB_ENV"
+              exit 0
+            fi
+            sleep 1
+          done
+          tail -n 100 "$RUNNER_TEMP/referee.log"
+          echo "::error::CrossPaste did not write cli-endpoint.json"
+          exit 1
+      - name: Interop test
+        run: |
+          chmod +x bin/cprs
+          python3 crosspaste-rs/tests/interop.py --cprs bin/cprs --sock "$REF_SOCK" --work "$RUNNER_TEMP/work"
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: interop-logs-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/referee.log
+            ${{ runner.temp }}/work/*/err.log
+            ${{ runner.temp }}/refhome/**/logs/*.log
+          if-no-files-found: ignore
+
+  upstream-watch:
+    if: ${{ !inputs.release_gate }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compare protocol code with crosspaste-rs/UPSTREAM
+        run: |
+          set -euo pipefail
+          repo=CrossPaste/crosspaste-desktop
+          base="$(tr -d '[:space:]' < crosspaste-rs/UPSTREAM)"
+          head="$(gh release view -R "$repo" --json tagName --jq .tagName)"
+          version_of() {
+            gh api "repos/$repo/contents/app/src/commonMain/kotlin/com/crosspaste/net/SyncApi.kt?ref=$1" --jq .content \
+              | base64 -d | grep -o 'VERSION: Int = [0-9]*' | head -n 1 | grep -o '[0-9]*$'
+          }
+          {
+            echo "### CrossPaste $base → $head"
+            echo
+            echo "SyncApi.VERSION: $(version_of "$base") → $(version_of "$head")"
+          } >> "$GITHUB_STEP_SUMMARY"
+          [ "$base" = "$head" ] && { echo "Up to date."; exit 0; }
+          changed="$(gh api "repos/$repo/compare/$base...$head" --paginate --jq '.files[].filename' \
+            | grep -E '^(app/src/(commonMain|desktopMain)/kotlin/com/crosspaste/(net|secure|sync|pairing)/|core/src/commonMain/kotlin/com/crosspaste/(dto|secure|paste|presist)/|core/src/commonMain/kotlin/com/crosspaste/utils/(CryptographyUtils|CodecsUtils|MurmurHash3)\.kt|shared/src/commonMain/kotlin/com/crosspaste/presist/)' || true)"
+          {
+            echo
+            echo "Protocol-related files changed:"
+            echo '```'
+            echo "${changed:-(none)}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$(version_of "$base")" != "$(version_of "$head")" ]; then
+            echo "::error::CrossPaste $head changed SyncApi.VERSION; peers will show crosspaste-rs as incompatible."
+            exit 1
+          fi
+          if [ -n "$changed" ]; then
+            echo "::error::CrossPaste $head changed protocol code since $base; review, then bump crosspaste-rs/UPSTREAM."
+            exit 1
+          fi

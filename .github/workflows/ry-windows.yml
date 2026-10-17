@@ -1,5 +1,6 @@
-# Fork-only pipeline (RyQuantum/EcoPaste): test, build a signed Windows x64 NSIS installer,
-# and publish it with latest.json to this fork's GitHub Releases so the in-app updater
+# Fork-only pipeline (RyQuantum/EcoPaste): test (incl. crosspaste-rs interop, ry-crosspaste.yml),
+# build a signed Windows x64 NSIS installer, and publish it with latest.json to this fork's
+# GitHub Releases so the in-app updater
 # (pointed at releases/latest/download/latest.json) offers it.
 #
 # Version: <upstream patch + 1>-ry.<run number>, see scripts/ry/version.ts.
@@ -21,7 +22,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # crosspaste-rs layer 1 + 2 tests (official CrossPaste as referee); no release if they fail.
+  crosspaste:
+    uses: ./.github/workflows/ry-crosspaste.yml
+    with:
+      release_gate: true
+
   build:
+    needs: crosspaste
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
