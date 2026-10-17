@@ -90,8 +90,12 @@ pub fn init(app: &AppHandle) {
     });
 }
 
-/// 本地新条目入库后调用：文字和图片发给已连接的设备，文件不同步。
+/// 本地新条目入库后调用：文字和图片发给已连接的设备。文件不同步；
+/// 命中敏感内容规则的条目（密钥、密码之类）也不发出去。
 pub fn on_local_item(app: &AppHandle, item: &ClipboardItem) {
+    if item.is_sensitive {
+        return;
+    }
     let Some(state) = app.try_state::<LanSync>() else {
         return;
     };
