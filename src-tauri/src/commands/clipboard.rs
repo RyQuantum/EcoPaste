@@ -755,7 +755,9 @@ fn compute_available_actions(item: &ClipboardItem) -> Vec<ClipboardAction> {
     actions.push(ClipboardAction::Copy);
     if item.kind == ClipboardKind::Image {
         actions.push(ClipboardAction::SaveImage);
-        actions.push(ClipboardAction::OpenImage);
+    }
+    if item.kind != ClipboardKind::Files {
+        actions.push(ClipboardAction::Edit);
     }
 
     match item.sub_kind {
@@ -1775,7 +1777,7 @@ mod tests {
         let actions = compute_available_actions(&image_item());
 
         assert!(actions.contains(&ClipboardAction::SaveImage));
-        assert!(actions.contains(&ClipboardAction::OpenImage));
+        assert!(actions.contains(&ClipboardAction::Edit));
     }
 
     #[test]
@@ -1783,6 +1785,7 @@ mod tests {
         let actions = compute_available_actions(&text_item(None, false));
 
         assert!(!actions.contains(&ClipboardAction::SaveImage));
+        assert!(actions.contains(&ClipboardAction::Edit));
     }
 
     #[test]

@@ -85,6 +85,7 @@
     "copySelected": "Copy selected item",
     "createGroup": "Create group",
     "deleteSelected": "Delete selected item",
+    "editSelected": "Edit (images in Snipping Tool, text in the chosen editor)",
     "favoriteSelected": "Favorite / unfavorite",
     "focusSearch": "Focus search",
     "navigate": "Navigate up/down",

@@ -28,7 +28,7 @@ const MIDDLE_CLICK_ACTION_OPTIONS = [
   { value: "singleClickPastePlain" },
   { value: "singleClickCopy" },
   { value: "singleClickCopyPlain" },
-  { value: "singleClickOpen" },
+  { value: "singleClickEdit" },
 ];
 const CLIPBOARD_SORT_OPTIONS = [
   { value: "createdAtDesc" },

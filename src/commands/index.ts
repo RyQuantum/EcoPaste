@@ -947,23 +947,12 @@ export const openClipboardItemLink = (id: string, mailto: boolean) => {
 };
 
 /**
- * 打开图片条目：Windows 用截图工具（可直接标注），否则用默认看图程序。fork 补丁。
+ * 编辑条目（右键菜单 / Ctrl+E / 中键）：图片用截图工具，文字写临时文件后用设置里的编辑器。fork 补丁。
  */
-export const openClipboardImage = (id: string) => {
+export const editClipboardItem = (id: string) => {
   return call<void>(
-    TAURI_COMMAND.OPEN_CLIPBOARD_IMAGE,
-    "commands:labels.openImage",
-    { id },
-  );
-};
-
-/**
- * 中键「打开」：图片用截图工具，文字写临时文件后用设置里的编辑器，文件用默认程序。fork 补丁。
- */
-export const openClipboardItem = (id: string) => {
-  return call<void>(
-    TAURI_COMMAND.OPEN_CLIPBOARD_ITEM,
-    "commands:labels.openItem",
+    TAURI_COMMAND.EDIT_CLIPBOARD_ITEM,
+    "commands:labels.editItem",
     { id },
   );
 };

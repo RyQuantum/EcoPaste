@@ -85,6 +85,7 @@
     "copySelected": "复制选中项",
     "createGroup": "新增分组",
     "deleteSelected": "删除选中项",
+    "editSelected": "编辑（图片用截图工具，文字用设置的编辑器）",
     "favoriteSelected": "收藏 / 取消收藏",
     "focusSearch": "聚焦搜索框",
     "navigate": "上下导航",

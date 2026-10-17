@@ -458,8 +458,10 @@ pub enum MiddleClickAction {
     SingleClickPastePlain,
     SingleClickCopy,
     SingleClickCopyPlain,
-    /// fork 补丁：图片用截图工具、文字用设置里的编辑器、文件用默认程序打开。
-    SingleClickOpen,
+    /// fork 补丁：编辑。图片用截图工具，文字用设置里的编辑器，文件用默认程序打开。
+    /// ry.14 存的是 `singleClickOpen`。
+    #[serde(alias = "singleClickOpen")]
+    SingleClickEdit,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]

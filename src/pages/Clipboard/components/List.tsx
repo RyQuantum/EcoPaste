@@ -16,10 +16,9 @@ import {
 import { useSnapshot } from "valtio";
 import {
   deleteClipboardItem,
+  editClipboardItem,
   hideWindow,
   listClipboardGroups,
-  openClipboardImage,
-  openClipboardItem,
   openClipboardItemLink,
   pasteClipboardItem,
   revealClipboardItem,
@@ -498,9 +497,6 @@ const List: FC = () => {
     if (previewSession?.itemId === item.id) closePreview("shortcutOpen");
 
     switch (action) {
-      case "openImage":
-        await openClipboardImage(item.id);
-        return;
       case "openLink":
         await openClipboardItemLink(item.id, false);
         return;
@@ -548,9 +544,9 @@ const List: FC = () => {
         if (previewSession?.itemId === target.id) closePreview("saveImage");
         saveClipboardImageToFile(target.id);
         return;
-      case "openImage":
-        if (previewSession?.itemId === target.id) closePreview("openImage");
-        openClipboardImage(target.id);
+      case "edit":
+        if (previewSession?.itemId === target.id) closePreview("edit");
+        editClipboardItem(target.id);
         return;
       case "openLink":
         if (previewSession?.itemId === target.id) closePreview("openLink");
@@ -670,6 +666,19 @@ const List: FC = () => {
 
       event.preventDefault();
       void handleShortcutOpen(activeItem, openAction);
+
+      return;
+    }
+
+    if (eventModifierPressed && event.key.toLowerCase() === "e") {
+      const activeItem = getActiveItem();
+
+      if (!activeItem?.availableActions?.includes("edit")) return;
+
+      event.preventDefault();
+      if (previewSession?.itemId === activeItem.id)
+        closePreview("shortcutEdit");
+      void editClipboardItem(activeItem.id);
 
       return;
     }
@@ -969,10 +978,10 @@ const List: FC = () => {
           return;
         }
 
-        if (middleClick === "singleClickOpen") {
+        if (middleClick === "singleClickEdit") {
           setSelectedId(item.id);
-          closePreview("middleClickOpen");
-          openClipboardItem(item.id);
+          closePreview("middleClickEdit");
+          editClipboardItem(item.id);
         }
 
         return;
@@ -1303,7 +1312,6 @@ function getAllowedClipboardActions(
  */
 function getOpenClipboardAction(actions: ClipboardAction[] | undefined) {
   const openActions: ClipboardAction[] = [
-    "openImage",
     "openLink",
     "sendEmail",
     "revealInFinder",

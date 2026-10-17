@@ -216,6 +216,18 @@ mod tests {
     }
 
     #[test]
+    fn middle_click_open_from_ry14_reads_as_edit() {
+        let action: crate::settings::MiddleClickAction =
+            serde_json::from_str(r#""singleClickOpen""#).unwrap();
+
+        assert_eq!(action, crate::settings::MiddleClickAction::SingleClickEdit);
+        assert_eq!(
+            serde_json::to_string(&action).unwrap(),
+            r#""singleClickEdit""#
+        );
+    }
+
+    #[test]
     fn zero_image_limit_means_unlimited() {
         let ry: Ry = serde_json::from_str(r#"{ "imageStorageLimitMb": 0 }"#).unwrap();
 

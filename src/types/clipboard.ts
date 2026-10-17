@@ -25,7 +25,7 @@ export type ClipboardAction =
   | "pasteAsPath"
   | "copy"
   | "saveImage"
-  | "openImage"
+  | "edit"
   | "openLink"
   | "sendEmail"
   | "revealInFinder"

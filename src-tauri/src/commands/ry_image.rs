@@ -1,5 +1,5 @@
-//! fork 补丁：「打开」条目。图片（右键菜单 / Ctrl+O / 中键）用截图工具，
-//! 文字（中键）写临时文件后用设置里的编辑器，文件（中键）用默认程序打开第一个。
+//! fork 补丁：「编辑」条目（右键菜单 / Ctrl+E / 中键）。图片用截图工具，
+//! 文字写临时文件后用设置里的编辑器，文件（只有中键会走到）用默认程序打开第一个。
 
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_opener::OpenerExt;
@@ -12,8 +12,7 @@ use crate::db::DatabaseState;
 use crate::settings::SettingsStore;
 
 /// 用截图工具（Windows）或默认看图程序打开图片条目的原图。
-#[tauri::command]
-pub async fn open_clipboard_image(
+async fn open_clipboard_image(
     app: AppHandle,
     db: State<'_, DatabaseState>,
     store: State<'_, ImageStore>,
@@ -47,9 +46,9 @@ pub async fn open_clipboard_image(
     Ok(())
 }
 
-/// 中键「打开」：按条目类型分派。
+/// 「编辑」：按条目类型分派。
 #[tauri::command]
-pub async fn open_clipboard_item(
+pub async fn edit_clipboard_item(
     app: AppHandle,
     db: State<'_, DatabaseState>,
     store: State<'_, ImageStore>,

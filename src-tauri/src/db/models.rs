@@ -129,8 +129,8 @@ pub enum ClipboardAction {
     Copy,
     /// 将图片条目另存到本地文件（`kind = image`）。
     SaveImage,
-    /// 用截图工具 / 默认看图程序打开图片（`kind = image`，fork 补丁）。
-    OpenImage,
+    /// 编辑：图片用截图工具，文字写临时文件后用设置里的编辑器（`kind = image | text`，fork 补丁）。
+    Edit,
     /// 在浏览器打开链接（`sub_kind = url`）。
     OpenLink,
     /// 调起邮件客户端（`sub_kind = email`）。
