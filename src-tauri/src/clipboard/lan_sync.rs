@@ -76,7 +76,16 @@ pub fn init(app: &AppHandle) {
     tauri::async_runtime::spawn(async move {
         let sink_app = app.clone();
         let sink = Arc::new(move |event: Event| on_event(&sink_app, event));
-        match Node::start(cfg, sink).await {
+        // 在单独的任务里启动：启动过程中 panic 时能拿到 JoinError 记日志，而不是悄无声息。
+        let started = tauri::async_runtime::spawn(Node::start(cfg, sink)).await;
+        let started = match started {
+            Ok(result) => result,
+            Err(err) => {
+                log::error!("lan sync: start panicked: {err}");
+                return;
+            }
+        };
+        match started {
             Ok(node) => {
                 log::info!(
                     "lan sync started as {} on port {}",
@@ -340,6 +349,37 @@ fn computer_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 用 EcoPaste 自己的依赖配置真起一个节点并连上它。crosspaste-rs 单独编译时测不出
+    /// 宿主带来的差异（例如 reqwest 被别的插件打开 `rustls-no-provider` 后建客户端就 panic）。
+    #[tokio::test(flavor = "multi_thread")]
+    async fn node_starts_and_answers_inside_the_ecopaste_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = Config {
+            data_dir: dir.path().to_path_buf(),
+            device_name: "test".into(),
+            user_name: "test".into(),
+            app_version: "0".into(),
+            app_revision: "test".into(),
+            port: 0,
+            platform: Config::platform_current(),
+            bind_ip: Some([127, 0, 0, 1].into()),
+            advertise_hosts: Some(Vec::new()),
+            mdns: false,
+        };
+        let node = Node::start(cfg, Arc::new(|_| {})).await.unwrap();
+        let client = crosspaste_rs::client::Client::new("probe".into());
+        let telnet = client
+            .telnet("127.0.0.1", node.port(), std::time::Duration::from_secs(3))
+            .await
+            .unwrap();
+        assert_eq!(telnet.version, crosspaste_rs::model::SYNC_API_VERSION);
+        assert_eq!(
+            telnet.app_instance_id.as_deref(),
+            Some(node.app_instance_id())
+        );
+        node.shutdown();
+    }
 
     fn write_png(dir: &std::path::Path, name: &str, image: image::DynamicImage) -> PathBuf {
         let path = dir.join(name);

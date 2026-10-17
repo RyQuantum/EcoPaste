@@ -4,10 +4,18 @@
 //! peer also carry `targetAppInstanceId`; with `secure: 1` the request body is
 //! encrypted and the peer encrypts its successful response (JSON whole,
 //! binary as length-prefixed records).
+//!
+//! Plain HTTP on hyper directly: no TLS stack, so the host application's TLS
+//! choices (e.g. reqwest built with `rustls-no-provider`) cannot break it.
 
 use std::time::Duration;
 
-use reqwest::header::{HeaderMap, HeaderValue, CONTENT_TYPE};
+use bytes::Bytes;
+use http_body_util::{BodyExt, Full};
+use hyper::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
+use hyper::{Method, Request};
+use hyper_util::client::legacy::connect::HttpConnector;
+use hyper_util::rt::TokioExecutor;
 
 use crate::crypto::MessageCipher;
 use crate::model::{
@@ -22,7 +30,9 @@ pub const HEADER_EXCHANGE_TIMESTAMP: &str = "crosspaste-exchange-timestamp";
 #[derive(Debug, thiserror::Error)]
 pub enum ClientError {
     #[error("network: {0}")]
-    Net(#[from] reqwest::Error),
+    Net(String),
+    #[error("timed out")]
+    Timeout,
     #[error("peer error {code}: {message}")]
     Peer {
         status: u16,
@@ -52,32 +62,35 @@ pub struct Telnet {
     pub app_instance_id: Option<String>,
 }
 
-#[derive(Clone)]
-pub struct Client {
-    http: reqwest::Client,
-    own_id: String,
+struct Response {
+    headers: HeaderMap,
+    body: Bytes,
 }
 
-fn url(host: &str, port: u16, path: &str) -> String {
-    format!("http://{host}:{port}{path}")
+type HyperClient = hyper_util::client::legacy::Client<HttpConnector, Full<Bytes>>;
+
+#[derive(Clone)]
+pub struct Client {
+    http: HyperClient,
+    own_id: String,
 }
 
 impl Client {
     pub fn new(own_id: String) -> Self {
-        let http = reqwest::Client::builder()
-            .no_proxy()
-            .connect_timeout(Duration::from_secs(2))
-            .build()
-            .expect("build HTTP client");
+        let mut connector = HttpConnector::new();
+        connector.set_connect_timeout(Some(Duration::from_secs(2)));
+        connector.set_nodelay(true);
+        let http = hyper_util::client::legacy::Client::builder(TokioExecutor::new())
+            .pool_idle_timeout(Duration::from_secs(30))
+            .build(connector);
         Self { http, own_id }
     }
 
     fn headers(&self, target: Option<&str>, secure: bool) -> HeaderMap {
         let mut h = HeaderMap::new();
-        h.insert(
-            HEADER_APP_INSTANCE_ID,
-            HeaderValue::from_str(&self.own_id).unwrap(),
-        );
+        if let Ok(v) = HeaderValue::from_str(&self.own_id) {
+            h.insert(HEADER_APP_INSTANCE_ID, v);
+        }
         h.insert("Accept-Encoding", HeaderValue::from_static("identity"));
         if let Some(t) = target {
             if let Ok(v) = HeaderValue::from_str(t) {
@@ -90,12 +103,58 @@ impl Client {
         h
     }
 
-    async fn check(resp: reqwest::Response) -> Result<reqwest::Response> {
-        let status = resp.status().as_u16();
-        if (200..300).contains(&status) {
-            return Ok(resp);
+    fn with(mut h: HeaderMap, name: &'static str, value: &str) -> HeaderMap {
+        if let Ok(v) = HeaderValue::from_str(value) {
+            h.insert(HeaderName::from_static(name), v);
         }
-        let body = resp.bytes().await.unwrap_or_default();
+        h
+    }
+
+    /// Sends one request; non-2xx answers become [`ClientError::Peer`] (with
+    /// CrossPaste's `FailResponse` body) or [`ClientError::Status`].
+    async fn send(
+        &self,
+        method: Method,
+        (host, port): (&str, u16),
+        path: &str,
+        headers: HeaderMap,
+        body: Option<Vec<u8>>,
+        timeout: Duration,
+    ) -> Result<Response> {
+        let mut builder = Request::builder()
+            .method(method)
+            .uri(format!("http://{host}:{port}{path}"));
+        for (k, v) in headers.iter() {
+            builder = builder.header(k, v);
+        }
+        if body.is_some() {
+            builder = builder.header(CONTENT_TYPE, "application/json");
+        }
+        let req = builder
+            .body(Full::new(Bytes::from(body.unwrap_or_default())))
+            .map_err(|e| ClientError::Net(e.to_string()))?;
+        let fut = async {
+            let resp = self
+                .http
+                .request(req)
+                .await
+                .map_err(|e| ClientError::Net(e.to_string()))?;
+            let status = resp.status().as_u16();
+            let headers = resp.headers().clone();
+            let body = resp
+                .into_body()
+                .collect()
+                .await
+                .map_err(|e| ClientError::Net(e.to_string()))?
+                .to_bytes();
+            Ok::<_, ClientError>((status, headers, body))
+        };
+        let (status, headers, body) = tokio::time::timeout(timeout, fut)
+            .await
+            .map_err(|_| ClientError::Timeout)??;
+        if (200..300).contains(&status) {
+            return Ok(Response { headers, body });
+        }
         match serde_json::from_slice::<FailResponse>(&body) {
             Ok(f) => Err(ClientError::Peer {
                 status,
@@ -107,32 +166,36 @@ impl Client {
     }
 
     pub async fn sync_info(&self, host: &str, port: u16) -> Result<SyncInfo> {
-        let resp = self
-            .http
-            .get(url(host, port, "/sync/syncInfo"))
-            .headers(self.headers(None, false))
-            .timeout(Duration::from_secs(3))
-            .send()
+        let r = self
+            .send(
+                Method::GET,
+                (host, port),
+                "/sync/syncInfo",
+                self.headers(None, false),
+                None,
+                Duration::from_secs(3),
+            )
             .await?;
-        let bytes = Self::check(resp).await?.bytes().await?;
-        serde_json::from_slice(&bytes).map_err(|e| ClientError::Bad(e.to_string()))
+        serde_json::from_slice(&r.body).map_err(|e| ClientError::Bad(e.to_string()))
     }
 
     pub async fn telnet(&self, host: &str, port: u16, timeout: Duration) -> Result<Telnet> {
-        let resp = self
-            .http
-            .get(url(host, port, "/sync/telnet"))
-            .headers(self.headers(None, false))
-            .timeout(timeout)
-            .send()
+        let r = self
+            .send(
+                Method::GET,
+                (host, port),
+                "/sync/telnet",
+                self.headers(None, false),
+                None,
+                timeout,
+            )
             .await?;
-        let resp = Self::check(resp).await?;
-        let id = resp
-            .headers()
+        let id = r
+            .headers
             .get(HEADER_APP_INSTANCE_ID)
             .and_then(|v| v.to_str().ok())
             .map(str::to_string);
-        let text = resp.text().await?;
+        let text = String::from_utf8_lossy(&r.body);
         let version = text
             .trim()
             .parse()
@@ -145,14 +208,17 @@ impl Client {
 
     /// Plain liveness heartbeat; returns the peer's `SyncApi.VERSION`.
     pub async fn heartbeat(&self, host: &str, port: u16, target: &str) -> Result<i32> {
-        let resp = self
-            .http
-            .get(url(host, port, "/sync/heartbeat"))
-            .headers(self.headers(Some(target), false))
-            .timeout(Duration::from_secs(3))
-            .send()
+        let r = self
+            .send(
+                Method::GET,
+                (host, port),
+                "/sync/heartbeat",
+                self.headers(Some(target), false),
+                None,
+                Duration::from_secs(3),
+            )
             .await?;
-        let text = Self::check(resp).await?.text().await?;
+        let text = String::from_utf8_lossy(&r.body);
         text.trim()
             .parse()
             .map_err(|_| ClientError::Bad(format!("heartbeat body {text:?}")))
@@ -168,18 +234,18 @@ impl Client {
         info: &SyncInfo,
     ) -> Result<i32> {
         let body = cipher.encrypt(&serde_json::to_vec(info).unwrap());
-        let resp = self
-            .http
-            .post(url(host, port, "/sync/heartbeat/syncInfo"))
-            .headers(self.headers(Some(target), true))
-            .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(3))
-            .body(body)
-            .send()
+        let r = self
+            .send(
+                Method::POST,
+                (host, port),
+                "/sync/heartbeat/syncInfo",
+                self.headers(Some(target), true),
+                Some(body),
+                Duration::from_secs(3),
+            )
             .await?;
-        let bytes = Self::check(resp).await?.bytes().await?;
         let plain = cipher
-            .decrypt(&bytes)
+            .decrypt(&r.body)
             .map_err(|_| ClientError::Bad("undecryptable heartbeat".into()))?;
         let text = String::from_utf8_lossy(&plain);
         text.trim()
@@ -188,17 +254,17 @@ impl Client {
     }
 
     pub async fn exchange(&self, host: &str, port: u16, req: &KeyExchange) -> Result<KeyExchange> {
-        let resp = self
-            .http
-            .post(url(host, port, "/sync/trust/v2/exchange"))
-            .headers(self.headers(None, false))
-            .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(5))
-            .body(serde_json::to_vec(req).unwrap())
-            .send()
+        let r = self
+            .send(
+                Method::POST,
+                (host, port),
+                "/sync/trust/v2/exchange",
+                self.headers(None, false),
+                Some(serde_json::to_vec(req).unwrap()),
+                Duration::from_secs(5),
+            )
             .await?;
-        let bytes = Self::check(resp).await?.bytes().await?;
-        serde_json::from_slice(&bytes).map_err(|e| ClientError::Bad(e.to_string()))
+        serde_json::from_slice(&r.body).map_err(|e| ClientError::Bad(e.to_string()))
     }
 
     /// `own_info` rides along as `crosspaste-sync-info` so the peer can
@@ -214,33 +280,36 @@ impl Client {
         use base64::Engine;
         let info_header =
             base64::engine::general_purpose::STANDARD.encode(serde_json::to_vec(own_info).unwrap());
-        let resp = self
-            .http
-            .post(url(host, port, "/sync/trust/v2/confirm"))
-            .headers(self.headers(None, false))
-            .header("crosspaste-host", own_host)
-            .header("crosspaste-sync-info", info_header)
-            .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(5))
-            .body(serde_json::to_vec(req).unwrap())
-            .send()
+        let headers = Self::with(self.headers(None, false), "crosspaste-host", own_host);
+        let headers = Self::with(headers, "crosspaste-sync-info", &info_header);
+        let r = self
+            .send(
+                Method::POST,
+                (host, port),
+                "/sync/trust/v2/confirm",
+                headers,
+                Some(serde_json::to_vec(req).unwrap()),
+                Duration::from_secs(5),
+            )
             .await?;
-        let bytes = Self::check(resp).await?.bytes().await?;
-        serde_json::from_slice(&bytes).map_err(|e| ClientError::Bad(e.to_string()))
+        serde_json::from_slice(&r.body).map_err(|e| ClientError::Bad(e.to_string()))
     }
 
     pub async fn cancel(&self, host: &str, port: u16, generation: i64) -> Result<()> {
-        let resp = self
-            .http
-            .post(url(host, port, "/sync/trust/v2/cancel"))
-            .headers(self.headers(None, false))
-            .header(HEADER_EXCHANGE_TIMESTAMP, generation.to_string())
-            .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(3))
-            .body("\"\"")
-            .send()
-            .await?;
-        Self::check(resp).await?;
+        let headers = Self::with(
+            self.headers(None, false),
+            HEADER_EXCHANGE_TIMESTAMP,
+            &generation.to_string(),
+        );
+        self.send(
+            Method::POST,
+            (host, port),
+            "/sync/trust/v2/cancel",
+            headers,
+            Some(b"\"\"".to_vec()),
+            Duration::from_secs(3),
+        )
+        .await?;
         Ok(())
     }
 
@@ -255,20 +324,21 @@ impl Client {
         paste: &PasteData,
     ) -> Result<()> {
         let body = cipher.encrypt(&serde_json::to_vec(paste).unwrap());
-        let resp = self
-            .http
-            .post(url(host, port, "/sync/paste"))
-            .headers(self.headers(Some(target), true))
-            .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(10))
-            .body(body)
-            .send()
-            .await?;
-        if resp.status().as_u16() == 422 {
-            return Ok(());
+        match self
+            .send(
+                Method::POST,
+                (host, port),
+                "/sync/paste",
+                self.headers(Some(target), true),
+                Some(body),
+                Duration::from_secs(10),
+            )
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(ClientError::Peer { status: 422, .. }) | Err(ClientError::Status(422)) => Ok(()),
+            Err(e) => Err(e),
         }
-        Self::check(resp).await?;
-        Ok(())
     }
 
     /// One ≤1 MiB chunk of the files of the peer's paste `remote_id`.
@@ -286,17 +356,17 @@ impl Client {
             chunk_index,
         };
         let body = cipher.encrypt(&serde_json::to_vec(&req).unwrap());
-        let resp = self
-            .http
-            .post(url(host, port, "/pull/file"))
-            .headers(self.headers(Some(target), true))
-            .header(CONTENT_TYPE, "application/json")
-            .timeout(Duration::from_secs(50))
-            .body(body)
-            .send()
+        let r = self
+            .send(
+                Method::POST,
+                (host, port),
+                "/pull/file",
+                self.headers(Some(target), true),
+                Some(body),
+                Duration::from_secs(50),
+            )
             .await?;
-        let bytes = Self::check(resp).await?.bytes().await?;
-        decrypt_records(cipher, &bytes)
+        decrypt_records(cipher, &r.body)
     }
 }
 

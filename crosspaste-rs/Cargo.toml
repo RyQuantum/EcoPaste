@@ -29,7 +29,9 @@ aes = "0.8"
 cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 tokio = { version = "1", features = ["rt-multi-thread", "net", "sync", "time", "macros", "fs"] }
 axum = { version = "0.8", default-features = false, features = ["tokio", "http1", "json"] }
-reqwest = { version = "0.13", default-features = false }
+hyper = { version = "1", features = ["client", "http1"] }
+hyper-util = { version = "0.1", features = ["client-legacy", "http1", "tokio"] }
+http-body-util = "0.1"
 mdns-sd = "0.13"
 if-addrs = "0.13"
 bytes = "1"
