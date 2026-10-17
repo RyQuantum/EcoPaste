@@ -1038,20 +1038,31 @@ impl Node {
             .map(|h| h.host_address.clone())
             .unwrap_or_default();
         let own_info = self.inner.sync_info_for(&host);
-        let back = self
-            .inner
-            .client
-            .confirm(&host, port, &own_host, &own_info, &confirm)
-            .await?;
-        anyhow::ensure!(
-            crypto::verify(
-                &resp.sign_public_key,
-                &crypto::trust_confirm_message(back.timestamp),
-                &back.signature
-            ),
-            "peer confirm signature invalid"
-        );
+        // Trust before confirming: the peer heartbeats us as soon as it has
+        // stored our key, which can be before its confirm response reaches us.
+        // Answering that heartbeat with DECRYPT_FAIL makes it drop the pairing.
         self.inner.trust(peer_id, &resp.crypt_public_key, None);
+        let confirmed = async {
+            let back = self
+                .inner
+                .client
+                .confirm(&host, port, &own_host, &own_info, &confirm)
+                .await?;
+            anyhow::ensure!(
+                crypto::verify(
+                    &resp.sign_public_key,
+                    &crypto::trust_confirm_message(back.timestamp),
+                    &back.signature
+                ),
+                "peer confirm signature invalid"
+            );
+            Ok(())
+        }
+        .await;
+        if let Err(e) = confirmed {
+            self.inner.untrust(peer_id);
+            return Err(e);
+        }
         self.inner.emit(Event::Paired {
             peer_id: peer_id.to_string(),
             device_name: self.inner.device_name(peer_id),
