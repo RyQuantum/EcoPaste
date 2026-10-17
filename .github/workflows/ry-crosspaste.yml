@@ -91,11 +91,13 @@ jobs:
           set -euo pipefail
           exe="$(find "$RUNNER_TEMP/cp" -path '*/bin/crosspaste' -type f | head -n 1)"
           [ -n "$exe" ] || { echo "::error::bin/crosspaste not found in the tarball"; exit 1; }
-          export HOME="$RUNNER_TEMP/refhome"
-          mkdir -p "$HOME"
+          # Java takes user.home from the passwd entry, not $HOME; the runner is fresh, so the
+          # referee simply uses ~/.local/share/.crosspaste.
+          data="$(getent passwd "$(id -un)" | cut -d: -f6)/.local/share/.crosspaste"
+          echo "REF_DATA=$data" >> "$GITHUB_ENV"
           nohup "$exe" --headless > "$RUNNER_TEMP/referee.log" 2>&1 &
           for _ in $(seq 1 120); do
-            endpoint="$(find "$HOME" -name cli-endpoint.json 2>/dev/null | head -n 1)"
+            endpoint="$(find "$data" -name cli-endpoint.json 2>/dev/null | head -n 1)"
             if [ -n "$endpoint" ]; then
               echo "REF_SOCK=$(jq -r .socketPath "$endpoint")" >> "$GITHUB_ENV"
               exit 0
@@ -117,7 +119,7 @@ jobs:
           path: |
             ${{ runner.temp }}/referee.log
             ${{ runner.temp }}/work/*/err.log
-            ${{ runner.temp }}/refhome/**/logs/*.log
+            ${{ env.REF_DATA }}/logs/*.log
           if-no-files-found: ignore
 
   upstream-watch:
