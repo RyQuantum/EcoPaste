@@ -5,6 +5,7 @@ pub enum ClipboardMenuKey {
     PasteAsPath,
     Copy,
     SaveImage,
+    OpenImage,
     OpenLink,
     SendEmail,
     RevealInFinder,

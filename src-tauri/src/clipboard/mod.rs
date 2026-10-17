@@ -12,6 +12,7 @@ mod merge;
 #[cfg(target_os = "windows")]
 mod merge_hook;
 mod merge_sound;
+mod open_image;
 mod payload;
 mod read;
 mod secrets;
@@ -33,6 +34,7 @@ pub use icon::{get_icon_cache_key, icon_png, DIR_CACHE_KEY};
 pub use ingest::build_item;
 pub use ingest::build_item_with_settings;
 pub use lan_sync::init as init_lan_sync;
+pub use open_image::open as open_image_file;
 pub use payload::{ClipboardPayload, ImagePayload, TextPayload};
 pub use read::ClipboardReader;
 pub use sound::play_copy_sound;

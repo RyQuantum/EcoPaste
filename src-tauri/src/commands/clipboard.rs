@@ -755,6 +755,7 @@ fn compute_available_actions(item: &ClipboardItem) -> Vec<ClipboardAction> {
     actions.push(ClipboardAction::Copy);
     if item.kind == ClipboardKind::Image {
         actions.push(ClipboardAction::SaveImage);
+        actions.push(ClipboardAction::OpenImage);
     }
 
     match item.sub_kind {
@@ -1774,6 +1775,7 @@ mod tests {
         let actions = compute_available_actions(&image_item());
 
         assert!(actions.contains(&ClipboardAction::SaveImage));
+        assert!(actions.contains(&ClipboardAction::OpenImage));
     }
 
     #[test]

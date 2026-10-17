@@ -947,6 +947,17 @@ export const openClipboardItemLink = (id: string, mailto: boolean) => {
 };
 
 /**
+ * 打开图片条目：Windows 用截图工具（可直接标注），否则用默认看图程序。fork 补丁。
+ */
+export const openClipboardImage = (id: string) => {
+  return call<void>(
+    TAURI_COMMAND.OPEN_CLIPBOARD_IMAGE,
+    "commands:labels.openImage",
+    { id },
+  );
+};
+
+/**
  * 在系统文件管理器中定位条目对应文件；Rust 侧自动按 kind 提路径（files 取首个，text 取 content）。
  */
 export const revealClipboardItem = (id: string) => {

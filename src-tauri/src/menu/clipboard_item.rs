@@ -31,6 +31,7 @@ pub enum ClipboardMenuAction {
     PasteAsPath,
     Copy,
     SaveImage,
+    OpenImage,
     OpenLink,
     SendEmail,
     RevealInFinder,
@@ -59,6 +60,7 @@ impl ClipboardMenuAction {
             Self::PasteAsPath => Key::PasteAsPath,
             Self::Copy => Key::Copy,
             Self::SaveImage => Key::SaveImage,
+            Self::OpenImage => Key::OpenImage,
             Self::OpenLink => Key::OpenLink,
             Self::SendEmail => Key::SendEmail,
             Self::RevealInFinder => Key::RevealInFinder,
@@ -98,9 +100,11 @@ impl ClipboardMenuAction {
             Self::PasteAsPlainText | Self::PasteAsPath => Some("CmdOrCtrl+Enter"),
             Self::Copy => Some("CmdOrCtrl+C"),
             Self::SaveImage => None,
-            Self::OpenLink | Self::SendEmail | Self::RevealInFinder | Self::RevealInExplorer => {
-                Some("CmdOrCtrl+O")
-            }
+            Self::OpenImage
+            | Self::OpenLink
+            | Self::SendEmail
+            | Self::RevealInFinder
+            | Self::RevealInExplorer => Some("CmdOrCtrl+O"),
             Self::ToggleFavorite => Some("CmdOrCtrl+D"),
             Self::TogglePinned => Some("CmdOrCtrl+T"),
             Self::MoveToGroup => None,
@@ -120,6 +124,7 @@ pub(super) const ACTION_GROUPS: &[&[ClipboardMenuAction]] = &[
         ClipboardMenuAction::SaveImage,
     ],
     &[
+        ClipboardMenuAction::OpenImage,
         ClipboardMenuAction::OpenLink,
         ClipboardMenuAction::SendEmail,
         ClipboardMenuAction::RevealInFinder,
@@ -213,6 +218,7 @@ mod native {
                 Self::PasteAsPath => "cim::pasteAsPath",
                 Self::Copy => "cim::copy",
                 Self::SaveImage => "cim::saveImage",
+                Self::OpenImage => "cim::openImage",
                 Self::OpenLink => "cim::openLink",
                 Self::SendEmail => "cim::sendEmail",
                 Self::RevealInFinder => "cim::revealInFinder",
@@ -232,6 +238,7 @@ mod native {
                 ClipboardMenuAction::PasteAsPath,
                 ClipboardMenuAction::Copy,
                 ClipboardMenuAction::SaveImage,
+                ClipboardMenuAction::OpenImage,
                 ClipboardMenuAction::OpenLink,
                 ClipboardMenuAction::SendEmail,
                 ClipboardMenuAction::RevealInFinder,

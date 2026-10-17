@@ -18,6 +18,7 @@ import {
   deleteClipboardItem,
   hideWindow,
   listClipboardGroups,
+  openClipboardImage,
   openClipboardItemLink,
   pasteClipboardItem,
   revealClipboardItem,
@@ -496,6 +497,9 @@ const List: FC = () => {
     if (previewSession?.itemId === item.id) closePreview("shortcutOpen");
 
     switch (action) {
+      case "openImage":
+        await openClipboardImage(item.id);
+        return;
       case "openLink":
         await openClipboardItemLink(item.id, false);
         return;
@@ -542,6 +546,10 @@ const List: FC = () => {
       case "saveImage":
         if (previewSession?.itemId === target.id) closePreview("saveImage");
         saveClipboardImageToFile(target.id);
+        return;
+      case "openImage":
+        if (previewSession?.itemId === target.id) closePreview("openImage");
+        openClipboardImage(target.id);
         return;
       case "openLink":
         if (previewSession?.itemId === target.id) closePreview("openLink");
@@ -1287,6 +1295,7 @@ function getAllowedClipboardActions(
  */
 function getOpenClipboardAction(actions: ClipboardAction[] | undefined) {
   const openActions: ClipboardAction[] = [
+    "openImage",
     "openLink",
     "sendEmail",
     "revealInFinder",
