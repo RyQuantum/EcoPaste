@@ -1,10 +1,12 @@
 //! Alt 当 Ctrl 用（fork 补丁）：设置 `ry.windowModifier = "alt"` 时，剪贴板窗口可见期间
-//! 导航钩子把 Alt 视为 Ctrl——上报给前端的是 Control 事件，Alt + 字母 / 符号 / 数字和 Ctrl + 同键
-//! 走同一条路径，提示徽标、快捷键全部一致，前端不需要知道有 Alt 这回事。Ctrl 本身照常可用。
+//! 导航钩子吞掉 Alt，改为注入 Ctrl（AutoHotkey `LAlt::LCtrl` 同款做法）。
 //!
-//! Alt 键本身不吞（Alt+Tab 等系统组合照常可用）。前台程序（剪贴板窗口不抢焦点，前台仍是原程序）
-//! 会在「Alt 按下又松开、中间没有别的键」时激活菜单栏，所以每次按住 Alt 期间注入一次无意义的
-//! 0xE8 键（AutoHotkey 的 menu mask 同款做法）打断这个判定。
+//! - 前台程序收不到 Alt，不会因为「单按一下 Alt」弹出菜单栏。
+//! - 前端收到的是真正的 Ctrl：字母 / 符号 / 数字快捷键、提示徽标，以及「打开窗口时聚焦搜索框」
+//!   时按 Ctrl 把焦点交还列表的逻辑，都和按 Ctrl 完全一样。Ctrl 本身照常可用。
+//! - 窗口弹出时 Alt 已经按着（例如用 Win+Alt+C 唤出），那次 Alt 按下系统已经收到，吞不回来：
+//!   这时按住的 Alt 只在钩子里算作 Ctrl，松开前补一次 Ctrl 按下松开，打断前台程序的菜单判定。
+//! - 隐藏窗口时如果注入的 Ctrl 还没松开，立即补发松开，避免 Ctrl 卡住。
 
 use std::mem::{size_of, zeroed};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,18 +15,26 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
 use winapi::shared::minwindef::UINT;
 use winapi::um::winuser::{
-    GetAsyncKeyState, SendInput, INPUT, INPUT_KEYBOARD, KEYBDINPUT, KEYEVENTF_KEYUP, VK_LMENU,
-    VK_MENU, VK_RMENU, WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    GetAsyncKeyState, SendInput, INPUT, INPUT_KEYBOARD, KBDLLHOOKSTRUCT, KEYBDINPUT,
+    KEYEVENTF_KEYUP, LLKHF_INJECTED, VK_LCONTROL, VK_LMENU, VK_MENU, VK_RMENU, WM_KEYDOWN,
+    WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use super::NAV_EVENT;
 use crate::settings::{SettingsStore, WindowModifier};
 
-/// 未分配的虚拟键码，系统和常见程序都不处理它。
-const VK_MENU_MASK: u16 = 0xE8;
+/// 当前是否有一次被吞掉的 Alt 按下、并已注入了 Ctrl 按下。
+static CTRL_INJECTED: AtomicBool = AtomicBool::new(false);
 
-/// 本次按住 Alt 期间是否已注入过 menu mask。
-static ALT_MASKED: AtomicBool = AtomicBool::new(false);
+/// 钩子对 Alt 键的处理结论。
+pub enum AltKey {
+    /// 不是要接管的 Alt（设置没选 Alt、不是 Alt 键、或是程序注入的 Alt），按原逻辑处理。
+    NotMapped,
+    /// 吞掉这个 Alt 事件。
+    Swallow,
+    /// 交给系统（窗口弹出前就按着的那次 Alt）。
+    Pass,
+}
 
 /// Alt 是否也算窗口快捷键修饰键。
 fn alt_mode(app: &AppHandle) -> bool {
@@ -32,7 +42,9 @@ fn alt_mode(app: &AppHandle) -> bool {
         .is_some_and(|store| store.snapshot().ry.window_modifier == WindowModifier::Alt)
 }
 
-fn alt_held() -> bool {
+/// 系统层面 Alt 是否按着。被钩子吞掉的 Alt 不会更新这个状态，所以为真只可能是
+/// 窗口弹出前就按下、没被吞掉的那次。
+fn alt_held_in_system() -> bool {
     (unsafe { GetAsyncKeyState(VK_MENU) } as u16) & 0x8000 != 0
 }
 
@@ -40,35 +52,47 @@ fn is_alt(vk: u32) -> bool {
     matches!(vk as i32, VK_MENU | VK_LMENU | VK_RMENU)
 }
 
-/// 当前是否「按着充当 Ctrl 的 Alt」。是的话顺带确保本次按住期间注入过 menu mask
-/// （窗口在 Alt 已按下时才弹出，钩子看不到那次 Alt 按下，只能在这里补）。
-pub fn alt_acts_as_ctrl(app: &AppHandle) -> bool {
-    if !alt_held() || !alt_mode(app) {
-        return false;
-    }
-
-    mask_menu_once();
-    true
-}
-
-/// 这个键是否是充当 Ctrl 的 Alt 本身；是的话调用方按 Ctrl 键处理（上报 Control、不吞）。
-pub fn is_mapped_alt(app: &AppHandle, vk: u32, msg: UINT) -> bool {
-    if !is_alt(vk) || !alt_mode(app) {
-        return false;
+/// 在导航钩子最前面调用，处理 Alt 键本身。
+pub fn handle_alt_key(app: &AppHandle, kbd: &KBDLLHOOKSTRUCT, msg: UINT) -> AltKey {
+    let injected = kbd.flags & LLKHF_INJECTED != 0;
+    if injected || !is_alt(kbd.vkCode) || !alt_mode(app) {
+        return AltKey::NotMapped;
     }
 
     if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-        mask_menu_once();
-    } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
-        ALT_MASKED.store(false, Ordering::Relaxed);
+        if CTRL_INJECTED.load(Ordering::Relaxed) {
+            return AltKey::Swallow;
+        }
+        if alt_held_in_system() {
+            return AltKey::Pass;
+        }
+
+        CTRL_INJECTED.store(true, Ordering::Relaxed);
+        send_ctrl(&[0]);
+        return AltKey::Swallow;
     }
-    true
+
+    if msg == WM_KEYUP || msg == WM_SYSKEYUP {
+        if CTRL_INJECTED.swap(false, Ordering::Relaxed) {
+            send_ctrl(&[KEYEVENTF_KEYUP]);
+            return AltKey::Swallow;
+        }
+
+        send_ctrl(&[0, KEYEVENTF_KEYUP]);
+        return AltKey::Pass;
+    }
+
+    AltKey::NotMapped
 }
 
-/// 窗口弹出时 Alt 已经按着（例如用 Win+Alt+C 唤出），钩子收不到那次按下，
-/// 主动补一个 Control 按下，让提示徽标立刻出现。
+/// 窗口弹出前就按着的 Alt：钩子里算作 Ctrl。
+pub fn held_alt_acts_as_ctrl(app: &AppHandle) -> bool {
+    alt_held_in_system() && alt_mode(app)
+}
+
+/// 窗口弹出时 Alt 已经按着，钩子收不到那次按下，主动补一个 Control 按下，让提示徽标立刻出现。
 pub fn sync_held_alt(app: &AppHandle) {
-    if !alt_held() || !alt_mode(app) {
+    if !held_alt_acts_as_ctrl(app) {
         return;
     }
 
@@ -80,29 +104,31 @@ pub fn sync_held_alt(app: &AppHandle) {
     }
 }
 
-/// 隐藏窗口时复位：下次按住 Alt 重新注入。
-pub fn reset() {
-    ALT_MASKED.store(false, Ordering::Relaxed);
+/// 隐藏窗口时调用：注入的 Ctrl 还按着就补发松开。
+pub fn release() {
+    if CTRL_INJECTED.swap(false, Ordering::Relaxed) {
+        send_ctrl(&[KEYEVENTF_KEYUP]);
+    }
 }
 
-fn mask_menu_once() {
-    if ALT_MASKED.swap(true, Ordering::Relaxed) {
-        return;
-    }
-
-    let mut inputs: [INPUT; 2] = unsafe { zeroed() };
-    for (input, flags) in inputs.iter_mut().zip([0, KEYEVENTF_KEYUP]) {
-        input.type_ = INPUT_KEYBOARD;
-        unsafe {
-            *input.u.ki_mut() = KEYBDINPUT {
-                wVk: VK_MENU_MASK,
-                wScan: 0,
-                dwFlags: flags,
-                time: 0,
-                dwExtraInfo: 0,
-            };
-        }
-    }
+fn send_ctrl(flags: &[u32]) {
+    let mut inputs: Vec<INPUT> = flags
+        .iter()
+        .map(|flags| {
+            let mut input: INPUT = unsafe { zeroed() };
+            input.type_ = INPUT_KEYBOARD;
+            unsafe {
+                *input.u.ki_mut() = KEYBDINPUT {
+                    wVk: VK_LCONTROL as u16,
+                    wScan: 0,
+                    dwFlags: *flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                };
+            }
+            input
+        })
+        .collect();
 
     let sent = unsafe {
         SendInput(
@@ -112,6 +138,6 @@ fn mask_menu_once() {
         )
     };
     if sent as usize != inputs.len() {
-        log::warn!("inject menu mask key sent {sent}/{} events", inputs.len());
+        log::warn!("inject ctrl for alt sent {sent}/{} events", inputs.len());
     }
 }

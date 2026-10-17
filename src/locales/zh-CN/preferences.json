@@ -329,7 +329,7 @@
           "title": "拼接分隔符"
         },
         "mergeSound": {
-          "description": "拼接成功时播放一声短促的提示音，和普通复制提示音区分开。",
+          "description": "拼接成功时播放提示音。默认是内置的两声短音；把音效文件命名为 merge.aiff（也可以是 .wav、.mp3）放进数据目录的 config\\sounds 文件夹，就改用它，例如 Mac 上 Alfred 用的 /System/Library/Sounds/Purr.aiff。",
           "title": "拼接提示音"
         },
         "plainDefault": {

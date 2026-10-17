@@ -107,7 +107,7 @@ pub fn enable_navigation_keys(app: &AppHandle) {
 
 pub fn disable_navigation_keys() {
     NAV_ENABLED.store(false, Ordering::Relaxed);
-    alt_as_ctrl::reset();
+    alt_as_ctrl::release();
 
     // 隐藏窗口时主动通知前端 Ctrl 已松开：隐藏后钩子线程随即退出，
     // 此后真实的 Ctrl keyup 不会再被捕获，否则前端会残留"Ctrl 按下"状态。
@@ -139,14 +139,21 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
     let kbd = &*(lparam as *const KBDLLHOOKSTRUCT);
     let vk = kbd.vkCode;
     let msg = wparam as UINT;
-    // 设置选了 Alt 时，按着的 Alt 和 Alt 键本身都按 Ctrl 处理（见 alt_as_ctrl.rs）。
-    let ctrl_down = (GetAsyncKeyState(VK_CONTROL) as u16) & 0x8000 != 0
-        || APP_HANDLE.get().is_some_and(alt_as_ctrl::alt_acts_as_ctrl);
+    // 设置选了 Alt 时，Alt 被吞掉并改为注入 Ctrl（见 alt_as_ctrl.rs）。
+    if let Some(app) = APP_HANDLE.get() {
+        match alt_as_ctrl::handle_alt_key(app, kbd, msg) {
+            alt_as_ctrl::AltKey::Swallow => return 1,
+            alt_as_ctrl::AltKey::Pass => return CallNextHookEx(null_mut(), code, wparam, lparam),
+            alt_as_ctrl::AltKey::NotMapped => {}
+        }
+    }
 
-    let is_ctrl = matches!(vk as i32, VK_CONTROL | VK_LCONTROL | VK_RCONTROL)
+    let ctrl_down = (GetAsyncKeyState(VK_CONTROL) as u16) & 0x8000 != 0
         || APP_HANDLE
             .get()
-            .is_some_and(|app| alt_as_ctrl::is_mapped_alt(app, vk, msg));
+            .is_some_and(alt_as_ctrl::held_alt_acts_as_ctrl);
+
+    let is_ctrl = matches!(vk as i32, VK_CONTROL | VK_LCONTROL | VK_RCONTROL);
 
     if is_ctrl {
         if let Some(app) = APP_HANDLE.get() {

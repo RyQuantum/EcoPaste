@@ -418,7 +418,7 @@ async fn merge_into_latest(
     }
 
     if sound {
-        super::merge_sound::play();
+        super::merge_sound::play(app);
     }
 }
 

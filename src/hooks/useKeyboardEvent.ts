@@ -1,5 +1,6 @@
 import { useEventListener, useLatest } from "ahooks";
 import { TAURI_EVENT } from "@/constants/events";
+import { withAltAsCtrl } from "@/utils/altAsCtrl";
 import { isWinClipboardWindow } from "@/utils/is";
 import { useTauriListen } from "./useTauriListen";
 
@@ -39,9 +40,13 @@ export const useKeyboardEvent = (
   const isWindowsClipboardWindow = isWinClipboardWindow();
   const handlerRef = useLatest(handler);
 
-  const handleBrowserEvent = (event: KeyboardEvent) => {
+  const handleBrowserEvent = (nativeEvent: KeyboardEvent) => {
+    let event = nativeEvent;
+
     if (isWindowsClipboardWindow) {
-      const editableTarget = findEditableElement(event.target);
+      event = withAltAsCtrl(nativeEvent);
+
+      const editableTarget = findEditableElement(nativeEvent.target);
       if (editableTarget) {
         if (!shouldHandoffEditableKeyboard(editableTarget, event)) return;
 

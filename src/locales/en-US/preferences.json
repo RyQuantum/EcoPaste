@@ -329,7 +329,7 @@
           "title": "Merge separator"
         },
         "mergeSound": {
-          "description": "Play a short sound, distinct from the copy sound, when a merge succeeds.",
+          "description": "Play a sound when a merge succeeds. The built-in sound is two short tones; put a file named merge.aiff (or .wav / .mp3) in the config\\sounds folder of the data directory to use it instead, e.g. /System/Library/Sounds/Purr.aiff that Alfred plays on macOS.",
           "title": "Merge sound"
         },
         "plainDefault": {
