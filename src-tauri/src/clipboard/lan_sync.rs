@@ -2,6 +2,10 @@
 //!
 //! - 发出：本地新条目入库后（`merge.rs` 的两处入库点）交给 [`on_local_item`]，后台线程里
 //!   读图、必要时转 JPEG，再发给所有已连接的设备。复制那一刻不做任何重活。
+//!   没连上的已配对设备（睡眠中的 Mac 之类）重连时会按 id 补拉最近 50 条（CrossPaste 2.3），
+//!   所以只要配对过设备，就照常准备图片。
+//! - 同一次复制系统常发两次剪贴板通知，第二次入库只是去重更新；同一内容 2 秒内只发一次，
+//!   免得对方历史里出现两条。
 //! - 收到：自己入库，再经 [`write_to_clipboard`] 写进系统剪贴板；写回时登记的
 //!   [`WritebackGuard`] 指纹让 watcher 跳过这次变化，所以收到的内容不会被当成新复制再发回去。
 //! - 配对：对方设备（Mac / Deck 上的 CrossPaste）发起，这边弹窗显示 6 位数，在对方输入。
@@ -12,7 +16,8 @@
 
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 use crosspaste_rs::{Config, Event, Node};
 use serde_json::json;
@@ -34,10 +39,14 @@ const PREFERRED_PORT: u16 = 13130;
 /// 发出的图片超过这个大小、且没有透明像素时转成 JPEG。
 const JPEG_THRESHOLD_BYTES: usize = 500 * 1024;
 const JPEG_QUALITY: u8 = 90;
+/// 同一内容在这段时间内再次入库（系统重复通知）不再发出。
+const REPEAT_WINDOW: Duration = Duration::from_secs(2);
 
 /// 运行中的同步节点，注册在 Tauri `State` 里。
 pub struct LanSync {
     node: Node,
+    /// 最近一次发出的内容指纹和时间。
+    last_sent: Mutex<Option<(String, Instant)>>,
 }
 
 /// 设置里开着同步时启动节点。失败只记日志，不影响剪贴板本身。
@@ -92,7 +101,10 @@ pub fn init(app: &AppHandle) {
                     node.app_instance_id(),
                     node.port()
                 );
-                app.manage(LanSync { node });
+                app.manage(LanSync {
+                    node,
+                    last_sent: Mutex::new(None),
+                });
             }
             Err(err) => log::error!("lan sync: start failed: {err:#}"),
         }
@@ -108,6 +120,14 @@ pub fn on_local_item(app: &AppHandle, item: &ClipboardItem) {
     let Some(state) = app.try_state::<LanSync>() else {
         return;
     };
+    if is_repeat(
+        &mut state.last_sent.lock().unwrap(),
+        &item.content_hash,
+        Instant::now(),
+    ) {
+        log::info!("lan sync: skipped repeated clipboard notification");
+        return;
+    }
     let node = state.node.clone();
     match item.kind {
         ClipboardKind::Text => {
@@ -121,7 +141,7 @@ pub fn on_local_item(app: &AppHandle, item: &ClipboardItem) {
             tauri::async_runtime::spawn(async move { node.send_text(&text).await });
         }
         ClipboardKind::Image => {
-            if !node.has_connected_peers() {
+            if !node.has_paired_peers() {
                 return;
             }
             let Some(store) = app.try_state::<ImageStore>() else {
@@ -144,6 +164,17 @@ pub fn on_local_item(app: &AppHandle, item: &ClipboardItem) {
         }
         ClipboardKind::Files => {}
     }
+}
+
+/// `hash` 与上次发出的相同且在 [`REPEAT_WINDOW`] 内时返回 true；否则记下这次。
+fn is_repeat(last: &mut Option<(String, Instant)>, hash: &str, now: Instant) -> bool {
+    if let Some((prev, at)) = last {
+        if prev == hash && now.saturating_duration_since(*at) < REPEAT_WINDOW {
+            return true;
+        }
+    }
+    *last = Some((hash.to_owned(), now));
+    false
 }
 
 /// 读出历史里存的 PNG 原图；超过阈值且不透明时转成高质量 JPEG。
@@ -355,6 +386,18 @@ fn computer_name() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_second_notification_for_the_same_copy_is_not_sent_again() {
+        let mut last = None;
+        let t0 = Instant::now();
+        assert!(!is_repeat(&mut last, "a", t0));
+        assert!(is_repeat(&mut last, "a", t0 + Duration::from_millis(15)));
+        assert!(!is_repeat(&mut last, "b", t0 + Duration::from_millis(20)));
+        assert!(!is_repeat(&mut last, "a", t0 + Duration::from_millis(30)));
+        // 隔一会儿再复制同样的内容，照常发出。
+        assert!(!is_repeat(&mut last, "a", t0 + Duration::from_secs(5)));
+    }
 
     /// 用 EcoPaste 自己的依赖配置真起一个节点并连上它。crosspaste-rs 单独编译时测不出
     /// 宿主带来的差异（例如 reqwest 被别的插件打开 `rustls-no-provider` 后建客户端就 panic）。
