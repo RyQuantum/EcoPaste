@@ -6,7 +6,8 @@ CrossPaste instance running headless, driven through CrossPaste's CLI socket.
 
 Covered: v2 pairing in both directions, encrypted heartbeats, text both ways (UTF-8),
 image B -> CrossPaste (two chunks, byte-exact), CrossPaste -> A (CrossPaste relays
-B's image and serves /pull/file), image A -> CrossPaste.
+B's image and serves /pull/file), image A -> CrossPaste, and the 2.3 catch-up pull
+(/pull/pasteBatchById) of text and an image A copied while it was not pushing.
 
 Usage: python3 interop.py --cprs <cprs binary> --sock <CrossPaste CLI socket> --work <empty dir>
 CrossPaste is reached with `curl --unix-socket` (Python on Windows has no AF_UNIX).
@@ -127,9 +128,10 @@ def run(ref: Referee, a: Peer, b: Peer, work: Path):
     for key in ("enableEncryptSync", "enableClipboardRelay"):
         ref.call("PUT", "/cli/config", {"key": key, "value": "true"})
 
-    big, small = work / "big.png", work / "small.png"
+    big, small, held = work / "big.png", work / "small.png", work / "held.png"
     write_png(big, 800, 600)
     write_png(small, 120, 80)
+    write_png(held, 64, 48)
 
     a_id = a.wait(lambda e: e.get("event") == "started", "start")["id"]
     b_id = b.wait(lambda e: e.get("event") == "started", "start")["id"]
@@ -214,6 +216,33 @@ def run(ref: Referee, a: Peer, b: Peer, work: Path):
     print("== 8. Image A -> CrossPaste")
     a.send("image", str(small))
     poll(lambda: stored_image_equal_to(small), "byte-identical image from A", 30)
+
+    if tuple(int(x) for x in version.split(".")[:2]) < (2, 3):
+        print(f"PASS: crosspaste-rs interoperates with CrossPaste {version} (no catch-up pull before 2.3)")
+        return
+
+    print("== 9. CrossPaste pulls what A copied while it was not pushing (catch-up by id)")
+    a.send("hold", "on")
+    a.wait(lambda e: e.get("event") == "hold" and e.get("on"), "hold on")
+    t3 = f"crosspaste-rs catch-up: 한국어 ✅ {time.time()}"
+    a.send("text", t3)
+    a.send("image", str(held))
+    time.sleep(3)
+    if any(i["preview"] == t3 for i in ref.get("/cli/history?limit=10")["items"]):
+        raise Fail("held text reached CrossPaste by push")
+    # Re-enabling auto pull counts every connected peer as newly connected.
+    for value in ("false", "true"):
+        ref.call("PUT", "/cli/config", {"key": "enableAutoPastePull", "value": value})
+        time.sleep(1)
+    poll(
+        lambda: any(
+            i["preview"] == t3 and i["remote"] for i in ref.get("/cli/history?limit=10")["items"]
+        ),
+        "held text pulled from A",
+        30,
+    )
+    poll(lambda: stored_image_equal_to(held), "held image pulled from A", 30)
+    a.send("hold", "off")
 
     print(f"PASS: crosspaste-rs interoperates with CrossPaste {version}")
 

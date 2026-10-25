@@ -11,7 +11,7 @@ use std::time::Instant;
 
 use axum::body::{Body, Bytes};
 use axum::extract::{ConnectInfo, State};
-use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode, Uri};
 use axum::response::Response;
 use axum::routing::{get, post};
 use axum::Router;
@@ -52,6 +52,7 @@ pub(crate) fn router(inner: Arc<Inner>) -> Router {
         .route("/pull/file", post(pull_file))
         .route("/pull/icon/{source}", get(pull_icon))
         .route("/pull/pasteBatch", get(pull_paste_batch))
+        .route("/pull/pasteBatchById", get(pull_paste_batch_by_id))
         .route("/pull/paste", get(pull_paste))
         .with_state(inner)
 }
@@ -99,6 +100,15 @@ fn ok_empty(cipher: Option<&MessageCipher>) -> Response {
 
 fn header<'a>(h: &'a HeaderMap, name: &str) -> Option<&'a str> {
     h.get(name).and_then(|v| v.to_str().ok())
+}
+
+/// A query parameter; only used for numeric values, so no percent-decoding.
+fn query_param<'a>(uri: &'a Uri, name: &str) -> Option<&'a str> {
+    uri.query()?
+        .split('&')
+        .filter_map(|pair| pair.split_once('='))
+        .find(|(key, _)| *key == name)
+        .map(|(_, value)| value)
 }
 
 fn is_secure(h: &HeaderMap) -> bool {
@@ -487,11 +497,45 @@ async fn pull_paste_batch(State(inner): S, h: HeaderMap) -> Response {
             "NOT_FOUND_APP_INSTANCE_ID",
         );
     }
-    // No history catch-up: peers only get what is copied while connected.
+    // 2.2.1's createTime-cursor pull; 2.3 peers catch up through /pull/pasteBatchById.
     ok_json(
         &Vec::<PasteData>::new(),
         response_cipher(&inner, &id, &h).as_ref(),
     )
+}
+
+/// CrossPaste 2.3 catch-up on reconnect: our pastes with an id above the
+/// peer's cursor, newest first. Falls back to `/pull/pasteBatch` only on 404.
+async fn pull_paste_batch_by_id(State(inner): S, h: HeaderMap, uri: Uri) -> Response {
+    let id = tri!(require_id(&h));
+    tri!(require_target(&inner, &h));
+    if !inner.is_trusted(&id) {
+        return fail(
+            error_code::NOT_FOUND_APP_INSTANCE_ID,
+            "NOT_FOUND_APP_INSTANCE_ID",
+        );
+    }
+    let Some(after_id) = query_param(&uri, "afterId")
+        .and_then(|v| v.parse::<i64>().ok())
+        .filter(|v| *v >= 0)
+    else {
+        return respond(
+            StatusCode::BAD_REQUEST,
+            "text/plain; charset=UTF-8",
+            b"Invalid afterId".to_vec(),
+        );
+    };
+    let limit = query_param(&uri, "limit")
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(10)
+        .clamp(1, 50) as usize;
+    let batch = inner.sent_after(after_id, limit);
+    info!(
+        "crosspaste: {} pulled {} paste(s) after {after_id}",
+        inner.device_name(&id),
+        batch.len()
+    );
+    ok_json(&batch, response_cipher(&inner, &id, &h).as_ref())
 }
 
 async fn pull_paste(State(inner): S, h: HeaderMap) -> Response {

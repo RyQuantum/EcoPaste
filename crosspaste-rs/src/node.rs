@@ -2,10 +2,10 @@
 //! connect/heartbeat loop. Applications talk to it through [`Node`] and get
 //! told about incoming content through an [`Event`] callback.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicI64, AtomicU16, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI64, AtomicU16, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -26,6 +26,9 @@ pub const CHUNK_SIZE: u64 = 1024 * 1024;
 const PENDING_EXCHANGE_TTL: Duration = Duration::from_secs(60);
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(10);
 const OUTBOX_KEEP: usize = 10;
+/// Own pastes kept for peers that reconnect and catch up (`/pull/pasteBatchById`).
+const SENT_KEEP: usize = 50;
+const SENT_KEEP_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RECEIVE_BYTES: u64 = 256 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
@@ -175,6 +178,12 @@ pub(crate) struct OutboxEntry {
     pub files: Vec<(PathBuf, u64)>,
 }
 
+/// One of our own pastes, with its JSON size for the history byte budget.
+pub(crate) struct SentPaste {
+    pub paste: PasteData,
+    pub bytes: usize,
+}
+
 pub(crate) struct Inner {
     pub cfg: Config,
     pub own_id: String,
@@ -189,6 +198,9 @@ pub(crate) struct Inner {
     pub challenges: Mutex<HashMap<String, Challenge>>,
     pub ciphers: Mutex<HashMap<String, MessageCipher>>,
     pub outbox: Mutex<VecDeque<OutboxEntry>>,
+    pub sent: Mutex<VecDeque<SentPaste>>,
+    /// Test hook: keep recording pastes but push none, as if every peer were unreachable.
+    pub push_paused: AtomicBool,
     pub next_id: AtomicI64,
     pub local_hosts: Mutex<Vec<HostInfo>>,
     pub receive_enabled: std::sync::atomic::AtomicBool,
@@ -504,7 +516,31 @@ impl Inner {
         self.next_id.fetch_add(1, Ordering::Relaxed)
     }
 
+    /// Remembers one of our pastes for peers that pull what they missed.
+    fn remember(&self, paste: &PasteData) {
+        let bytes = serde_json::to_vec(paste).map(|v| v.len()).unwrap_or(0);
+        let mut sent = self.sent.lock().unwrap();
+        sent.push_back(SentPaste {
+            paste: paste.clone(),
+            bytes,
+        });
+        trim_sent(&mut sent, SENT_KEEP, SENT_KEEP_BYTES);
+    }
+
+    /// Our pastes with an id above `after_id`, newest first, at most `limit`.
+    /// Images whose files already left the outbox are skipped: the peer could
+    /// not pull them.
+    pub fn sent_after(&self, after_id: i64, limit: usize) -> Vec<PasteData> {
+        let outbox: HashSet<i64> = self.outbox.lock().unwrap().iter().map(|e| e.id).collect();
+        select_sent(&self.sent.lock().unwrap(), &outbox, after_id, limit)
+    }
+
     async fn broadcast(self: &Arc<Self>, paste: PasteData) {
+        self.remember(&paste);
+        if self.push_paused.load(Ordering::Relaxed) {
+            debug!("crosspaste: push paused, paste {} only recorded", paste.id);
+            return;
+        }
         let peers = self.connected_peers();
         if peers.is_empty() {
             debug!("crosspaste: no connected peers for paste {}", paste.id);
@@ -766,6 +802,8 @@ impl Node {
             challenges: Mutex::new(HashMap::new()),
             ciphers: Mutex::new(HashMap::new()),
             outbox: Mutex::new(VecDeque::new()),
+            sent: Mutex::new(VecDeque::new()),
+            push_paused: AtomicBool::new(false),
             next_id: AtomicI64::new(now_ms()),
             local_hosts: Mutex::new(
                 cfg.advertise_hosts
@@ -913,24 +951,37 @@ impl Node {
         out
     }
 
-    /// Whether any paired device is currently connected (lets callers skip
-    /// expensive preparation such as image transcoding).
+    /// Whether any paired device is currently connected.
     pub fn has_connected_peers(&self) -> bool {
         !self.inner.connected_peers().is_empty()
     }
 
-    /// Sends text to every connected peer.
+    /// Whether any device is paired, connected or not (lets callers skip
+    /// expensive preparation such as image transcoding when nobody could ever
+    /// receive or pull the result).
+    pub fn has_paired_peers(&self) -> bool {
+        !self.inner.store.lock().unwrap().peers.is_empty()
+    }
+
+    /// Test hook: record pastes without pushing them, as if every peer were
+    /// unreachable, so a peer has to pull them when it next catches up.
+    pub fn set_push_paused(&self, paused: bool) {
+        self.inner.push_paused.store(paused, Ordering::Relaxed);
+    }
+
+    /// Sends text to every connected peer and keeps it for peers that pull later.
     pub async fn send_text(&self, text: &str) {
-        if text.is_empty() {
+        if text.is_empty() || !self.has_paired_peers() {
             return;
         }
         let paste = PasteData::text(self.inner.next_paste_id(), &self.inner.own_id, text);
         self.inner.broadcast(paste).await;
     }
 
-    /// Sends one already-encoded image (PNG or JPEG bytes). `ext` is "png" or "jpg".
+    /// Sends one already-encoded image (PNG or JPEG bytes) to every connected
+    /// peer and keeps it in the outbox for peers that pull later. `ext` is "png" or "jpg".
     pub async fn send_image(&self, bytes: Vec<u8>, ext: &str) -> anyhow::Result<()> {
-        if self.inner.connected_peers().is_empty() {
+        if !self.has_paired_peers() {
             return Ok(());
         }
         let id = self.inner.next_paste_id();
@@ -1206,9 +1257,93 @@ fn expire_pending(inner: &Arc<Inner>) {
     }
 }
 
+/// Drops the oldest entries beyond `keep` or `max_bytes`, always keeping the newest one.
+fn trim_sent(sent: &mut VecDeque<SentPaste>, keep: usize, max_bytes: usize) {
+    let mut total: usize = sent.iter().map(|s| s.bytes).sum();
+    while sent.len() > keep || (total > max_bytes && sent.len() > 1) {
+        if let Some(old) = sent.pop_front() {
+            total -= old.bytes;
+        }
+    }
+}
+
+fn select_sent(
+    sent: &VecDeque<SentPaste>,
+    outbox: &HashSet<i64>,
+    after_id: i64,
+    limit: usize,
+) -> Vec<PasteData> {
+    sent.iter()
+        .rev()
+        .map(|s| &s.paste)
+        .filter(|p| p.id > after_id)
+        .filter(|p| !matches!(p.content(), RemoteContent::Images(_)) || outbox.contains(&p.id))
+        .take(limit)
+        .cloned()
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn sent(pastes: Vec<PasteData>) -> VecDeque<SentPaste> {
+        pastes
+            .into_iter()
+            .map(|paste| SentPaste { paste, bytes: 100 })
+            .collect()
+    }
+
+    #[test]
+    fn catch_up_returns_newer_pastes_newest_first() {
+        let history = sent(
+            (1..=5)
+                .map(|id| PasteData::text(id, "me", &format!("t{id}")))
+                .collect(),
+        );
+        let ids: Vec<i64> = select_sent(&history, &HashSet::new(), 2, 10)
+            .iter()
+            .map(|p| p.id)
+            .collect();
+        assert_eq!(ids, vec![5, 4, 3]);
+        let ids: Vec<i64> = select_sent(&history, &HashSet::new(), 0, 2)
+            .iter()
+            .map(|p| p.id)
+            .collect();
+        assert_eq!(ids, vec![5, 4]);
+    }
+
+    #[test]
+    fn catch_up_skips_images_no_longer_in_the_outbox() {
+        let history = sent(vec![
+            PasteData::image(1, "me", "EcoPaste-1.png", b"old"),
+            PasteData::text(2, "me", "text"),
+            PasteData::image(3, "me", "EcoPaste-3.png", b"new"),
+        ]);
+        let outbox = HashSet::from([3]);
+        let ids: Vec<i64> = select_sent(&history, &outbox, 0, 10)
+            .iter()
+            .map(|p| p.id)
+            .collect();
+        assert_eq!(ids, vec![3, 2]);
+    }
+
+    #[test]
+    fn history_is_bounded_by_count_and_bytes_but_keeps_the_newest() {
+        let mut history = sent((1..=5).map(|id| PasteData::text(id, "me", "t")).collect());
+        trim_sent(&mut history, 3, usize::MAX);
+        assert_eq!(
+            history.iter().map(|s| s.paste.id).collect::<Vec<_>>(),
+            vec![3, 4, 5]
+        );
+        trim_sent(&mut history, 10, 150);
+        assert_eq!(
+            history.iter().map(|s| s.paste.id).collect::<Vec<_>>(),
+            vec![5]
+        );
+        trim_sent(&mut history, 10, 1);
+        assert_eq!(history.len(), 1);
+    }
 
     #[test]
     fn rejects_path_like_file_names() {

@@ -4,7 +4,7 @@
 //! Events go to stdout as one JSON object per line; commands are read from
 //! stdin, one per line:
 //!   devices | add <host> <port> | text <s> | image <path> | pair <id> | pair-finish <id> <code>
-//!   reject <id> | unpair <id> | quit
+//!   hold on|off (record pastes without pushing) | reject <id> | unpair <id> | quit
 
 use std::io::BufRead;
 use std::path::PathBuf;
@@ -141,6 +141,10 @@ async fn main() -> anyhow::Result<()> {
                     let ext = if rest.to_ascii_lowercase().ends_with(".png") { "png" } else { "jpg" };
                     node.send_image(bytes, ext).await?;
                     emit(json!({"event": "sent"}));
+                }
+                "hold" => {
+                    node.set_push_paused(rest.trim() == "on");
+                    emit(json!({"event": "hold", "on": rest.trim() == "on"}));
                 }
                 "pair" => {
                     let (code, _) = node.pair_start(rest).await?;
