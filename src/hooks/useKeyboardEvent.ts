@@ -1,6 +1,6 @@
 import { useEventListener, useLatest } from "ahooks";
 import { TAURI_EVENT } from "@/constants/events";
-import { withAltAsCtrl } from "@/utils/altAsCtrl";
+import { isPhysicalCtrlForEditing, withAltAsCtrl } from "@/utils/altAsCtrl";
 import { isWinClipboardWindow } from "@/utils/is";
 import { useTauriListen } from "./useTauriListen";
 
@@ -8,16 +8,17 @@ type KeyboardEventType = "keydown" | "keyup";
 
 const EDITABLE_GLOBAL_KEYBOARD_ATTRIBUTE = "data-allow-global-keyboard";
 const EDITABLE_GLOBAL_KEYBOARD_SELECTOR = `[${EDITABLE_GLOBAL_KEYBOARD_ATTRIBUTE}="true"]`;
+// fork：←/→ 不在这里，留给输入框移动光标、选词。
 const EDITABLE_GLOBAL_HANDOFF_KEYS = new Set([
   "ArrowDown",
-  "ArrowLeft",
-  "ArrowRight",
   "ArrowUp",
   "Control",
   "Enter",
   "Escape",
   "Tab",
 ]);
+// fork：F1/F2/F3 切换类型，焦点留在输入框里，可以接着打字。
+const EDITABLE_GLOBAL_SHARED_KEYS = new Set(["F1", "F2", "F3"]);
 
 interface NavEventPayload {
   code?: string;
@@ -44,10 +45,17 @@ export const useKeyboardEvent = (
     let event = nativeEvent;
 
     if (isWindowsClipboardWindow) {
+      if (isPhysicalCtrlForEditing(nativeEvent)) return;
+
       event = withAltAsCtrl(nativeEvent);
 
       const editableTarget = findEditableElement(nativeEvent.target);
       if (editableTarget) {
+        if (shouldShareEditableKeyboard(editableTarget, event)) {
+          handlerRef.current(event);
+          return;
+        }
+
         if (!shouldHandoffEditableKeyboard(editableTarget, event)) return;
 
         editableTarget.blur();
@@ -93,6 +101,16 @@ function findEditableElement(target: EventTarget | null): HTMLElement | null {
 
 function shouldUseNativeEditableKeyboard(target: EventTarget | null) {
   return findEditableElement(target) !== null;
+}
+
+function shouldShareEditableKeyboard(
+  target: HTMLElement,
+  event: KeyboardEvent,
+) {
+  if (event.type !== "keydown") return false;
+  if (!target.closest(EDITABLE_GLOBAL_KEYBOARD_SELECTOR)) return false;
+
+  return EDITABLE_GLOBAL_SHARED_KEYS.has(event.key);
 }
 
 function shouldHandoffEditableKeyboard(

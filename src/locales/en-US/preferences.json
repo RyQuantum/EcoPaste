@@ -582,9 +582,10 @@
           "title": "Open Preferences Window"
         },
         "windowModifier": {
-          "description": "Shortcuts inside the clipboard window (search, groups, pin, delete, and the digits that paste the items currently shown) are triggered by holding Ctrl, which also shows the letter, symbol and digit hints. With \"Ctrl or Alt\", holding Alt works exactly like holding Ctrl.",
+          "description": "Shortcuts inside the clipboard window (search, groups, pin, delete, and the digits that paste the items currently shown) are triggered by holding Ctrl, which also shows the letter, symbol and digit hints. With \"Ctrl or Alt\", holding Alt works exactly like holding Ctrl. With \"Alt only\", these shortcuts use Alt alone and Ctrl+A / C / V / X / Z edit the text in the search box.",
           "options": {
             "alt": "Ctrl or Alt",
+            "altOnly": "Alt only",
             "primary": "Ctrl"
           },
           "title": "Window shortcut modifier"

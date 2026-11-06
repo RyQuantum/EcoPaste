@@ -3,8 +3,18 @@
  * 集中在 `ry` 段，方便叠到上游新版上；Rust 端改字段时本文件必须同步。
  */
 
-/** Rust enum `WindowModifier`：`primary` 为平台主修饰键（Windows Ctrl）；`alt` 表示 Alt 与 Ctrl 等效。 */
-export type WindowModifier = "primary" | "alt";
+/**
+ * Rust enum `WindowModifier`：`primary` 为平台主修饰键（Windows Ctrl）；`alt` 表示 Alt 与 Ctrl 等效；
+ * `altOnly` 表示窗口快捷键只认 Alt，Ctrl 组合留给搜索框编辑文字。
+ */
+export type WindowModifier = "primary" | "alt" | "altOnly";
+
+/** Rust struct `keyboard::HandoffKey`：导航钩子吞掉、要交还搜索框重发的按键。 */
+export interface SearchHandoffKey {
+  vk: number;
+  ctrl: boolean;
+  shift: boolean;
+}
 
 /** Rust enum `MergeSeparator`。 */
 export type MergeSeparator = "space" | "newline";

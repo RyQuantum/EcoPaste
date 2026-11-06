@@ -55,6 +55,7 @@ export const TAURI_COMMAND = {
   PLAY_COPY_SOUND: "play_copy_sound",
   POPUP_CLIPBOARD_ITEM_MENU: "popup_clipboard_item_menu",
   RELEASE_WINDOW_KEEPALIVE: "release_window_keepalive",
+  REPLAY_SEARCH_KEY: "replay_search_key",
   RESET_SETTINGS: "reset_settings",
   RESET_STORAGE_LOCATION: "reset_storage_location",
   RESTART_AS_ADMIN: "restart_as_admin",

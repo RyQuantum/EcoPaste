@@ -582,9 +582,10 @@
           "title": "打开偏好设置窗口"
         },
         "windowModifier": {
-          "description": "剪贴板窗口里的快捷键（搜索、分组、置顶、删除，以及给当前显示的记录粘贴用的数字等）默认按住 Ctrl 触发，按住时会显示字母、符号和数字提示。选「Ctrl 或 Alt」后，按住 Alt 与按住 Ctrl 完全一样。",
+          "description": "剪贴板窗口里的快捷键（搜索、分组、置顶、删除，以及给当前显示的记录粘贴用的数字等）默认按住 Ctrl 触发，按住时会显示字母、符号和数字提示。选「Ctrl 或 Alt」后，按住 Alt 与按住 Ctrl 完全一样。选「只用 Alt」后，这些快捷键只认 Alt，Ctrl+A / C / V / X / Z 等留在搜索框里编辑文字。",
           "options": {
             "alt": "Ctrl 或 Alt",
+            "altOnly": "只用 Alt",
             "primary": "Ctrl"
           },
           "title": "窗口快捷键修饰键"

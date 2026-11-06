@@ -7,5 +7,7 @@ pub const NAV_EVENT: &str = "keyboard://nav";
 
 mod alt_as_ctrl;
 pub(crate) mod deskflow;
+mod search_handoff;
 mod windows;
+pub use search_handoff::{replay as replay_search_key, HandoffKey};
 pub use windows::{disable_navigation_keys, enable_navigation_keys};

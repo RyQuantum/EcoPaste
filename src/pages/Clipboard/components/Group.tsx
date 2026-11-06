@@ -35,6 +35,7 @@ import type {
 } from "@/types/clipboard";
 import { cn } from "@/utils/cn";
 import { getModalApi } from "@/utils/feedback";
+import { isWinClipboardWindow } from "@/utils/is";
 
 type GroupModalMode = "create" | "edit";
 type MoreMenuAction = "manageGroups" | "newGroup";
@@ -82,6 +83,13 @@ const CATEGORY_GROUP_OPTIONS: CategoryGroupOption[] = [
     value: "files",
   },
 ];
+
+/** fork：Windows 用 F1/F2/F3 直接切到对应类型（再按不变），←/→ 留给搜索框移动光标。 */
+const WINDOWS_CATEGORY_KEYS: Partial<Record<string, ClipboardCategory>> = {
+  F1: "text",
+  F2: "image",
+  F3: "files",
+};
 
 const GROUP_MENU_ACTION = {
   DELETE: "delete",
@@ -256,7 +264,8 @@ const Group: FC = () => {
   };
 
   /**
-   * 处理分组栏快捷键：Cmd/Ctrl+Q 切换范围，左右键切分类，Tab / Shift+Tab 仅在可见自定义分组间循环。
+   * 处理分组栏快捷键：Cmd/Ctrl+Q 切换范围，左右键切分类（Windows 改为 F1/F2/F3），
+   * Tab / Shift+Tab 仅在可见自定义分组间循环。
    */
   const handleKeyDown = (event: KeyboardEvent) => {
     const eventModifierPressed = event.metaKey || event.ctrlKey;
@@ -268,7 +277,20 @@ const Group: FC = () => {
       return;
     }
 
+    const isWindows = isWinClipboardWindow();
+    const windowsCategory = isWindows
+      ? WINDOWS_CATEGORY_KEYS[event.key]
+      : void 0;
+
+    if (windowsCategory) {
+      event.preventDefault();
+      clipboardViewState.category = windowsCategory;
+
+      return;
+    }
+
     if (
+      !isWindows &&
       (event.key === "ArrowLeft" || event.key === "ArrowRight") &&
       !shouldUseNativeHorizontalNavigation(event)
     ) {

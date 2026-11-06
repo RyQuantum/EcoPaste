@@ -12,7 +12,11 @@ export const RY_SHORTCUT_SETTINGS: PreferenceSetting[] = isWin
   ? [
       {
         control: {
-          options: [{ value: "primary" }, { value: "alt" }],
+          options: [
+            { value: "primary" },
+            { value: "alt" },
+            { value: "altOnly" },
+          ],
           type: "segmented",
         },
         id: "shortcuts.windowModifier",

@@ -10,12 +10,13 @@ use winapi::um::processthreadsapi::GetCurrentThreadId;
 use winapi::um::winuser::{
     CallNextHookEx, GetAsyncKeyState, GetMessageW, PostThreadMessageW, SetWindowsHookExW,
     UnhookWindowsHookEx, KBDLLHOOKSTRUCT, MSG, VK_BACK, VK_CONTROL, VK_DELETE, VK_DOWN, VK_ESCAPE,
-    VK_LCONTROL, VK_LEFT, VK_RCONTROL, VK_RETURN, VK_RIGHT, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
+    VK_F1, VK_F2, VK_F3, VK_LCONTROL, VK_RCONTROL, VK_RETURN, VK_SHIFT, VK_SPACE, VK_TAB, VK_UP,
     WH_KEYBOARD_LL, WM_KEYDOWN, WM_KEYUP, WM_QUIT, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use super::alt_as_ctrl;
 use super::deskflow;
+use super::search_handoff;
 use super::NAV_EVENT;
 
 static NAV_ENABLED: AtomicBool = AtomicBool::new(false);
@@ -50,15 +51,24 @@ fn ctrl_shortcut_key(vk: u32) -> Option<String> {
     }
 }
 
+/// ←/→ 不在这里（fork）：它们交还搜索框移动光标，见 `search_handoff.rs`。
 fn nav_key(vk: u32) -> Option<&'static str> {
     match vk as i32 {
-        VK_LEFT => Some("ArrowLeft"),
-        VK_RIGHT => Some("ArrowRight"),
         VK_UP => Some("ArrowUp"),
         VK_DOWN => Some("ArrowDown"),
         VK_RETURN => Some("Enter"),
         VK_ESCAPE => Some("Escape"),
         VK_TAB => Some("Tab"),
+        _ => None,
+    }
+}
+
+/// 切换类型筛选（fork）：F1 文字、F2 图片、F3 文件。
+fn category_key(vk: u32) -> Option<&'static str> {
+    match vk as i32 {
+        VK_F1 => Some("F1"),
+        VK_F2 => Some("F2"),
+        VK_F3 => Some("F3"),
         _ => None,
     }
 }
@@ -166,15 +176,15 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
         }
     }
 
-    let ctrl_down = (GetAsyncKeyState(VK_CONTROL) as u16) & 0x8000 != 0
-        || APP_HANDLE
-            .get()
-            .is_some_and(alt_as_ctrl::held_alt_acts_as_ctrl);
+    let ctrl_down = APP_HANDLE.get().is_some_and(alt_as_ctrl::modifier_down);
 
     let is_ctrl = matches!(vk as i32, VK_CONTROL | VK_LCONTROL | VK_RCONTROL);
 
     if is_ctrl {
-        if let Some(app) = APP_HANDLE.get() {
+        if let Some(app) = APP_HANDLE
+            .get()
+            .filter(|app| alt_as_ctrl::ctrl_event_reaches_frontend(app, kbd))
+        {
             let event_type = if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
                 Some("keydown")
             } else if msg == WM_KEYUP || msg == WM_SYSKEYUP {
@@ -241,6 +251,39 @@ unsafe extern "system" fn hook_proc(code: i32, wparam: WPARAM, lparam: LPARAM) -
                 }
             }
 
+            return 1;
+        }
+
+        if let Some(category_key) = category_key(vk) {
+            if let Some(app) = APP_HANDLE.get() {
+                if let Err(err) =
+                    app.emit(NAV_EVENT, json!({ "type": "keydown", "key": category_key }))
+                {
+                    log::warn!("emit nav event failed: {err:?}");
+                }
+            }
+
+            consumed_keys()
+                .lock()
+                .expect("consumed keys poisoned")
+                .insert(vk);
+            return 1;
+        }
+
+        let hands_off_to_search = search_handoff::is_horizontal(vk)
+            || (search_handoff::is_ctrl_edit_key(vk)
+                && APP_HANDLE
+                    .get()
+                    .is_some_and(alt_as_ctrl::physical_ctrl_edits_search));
+        if hands_off_to_search {
+            let mut consumed = consumed_keys().lock().expect("consumed keys poisoned");
+            // 按住不放的自动重复：交还完成前只发一次，免得光标多走几格。
+            if consumed.insert(vk) {
+                drop(consumed);
+                if let Some(app) = APP_HANDLE.get() {
+                    search_handoff::emit(app, vk);
+                }
+            }
             return 1;
         }
 

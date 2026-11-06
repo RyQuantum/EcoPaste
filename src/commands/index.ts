@@ -23,6 +23,7 @@ import type {
   ClipboardSubKind,
   UpdateNoteResult,
 } from "@/types/clipboard";
+import type { SearchHandoffKey } from "@/types/rySettings";
 import type { Settings, SettingsPatch } from "@/types/settings";
 import { getMessageApi, getModalApi } from "@/utils/feedback";
 import { log } from "@/utils/log";
@@ -1332,6 +1333,17 @@ export const setClipboardWindowEditing = async (editing: boolean) => {
     });
   } catch (error) {
     log.error("set clipboard window editing failed", toAppError(error));
+  }
+};
+
+/**
+ * fork：搜索框已重新聚焦，重发导航钩子吞掉的那次按键（仅 Windows 剪贴板窗口）。
+ */
+export const replaySearchKey = async (key: SearchHandoffKey) => {
+  try {
+    await invoke<void>(TAURI_COMMAND.REPLAY_SEARCH_KEY, { key });
+  } catch (error) {
+    log.error("replay search key failed", toAppError(error));
   }
 };
 

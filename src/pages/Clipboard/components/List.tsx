@@ -54,7 +54,7 @@ import type {
 } from "@/types/clipboard";
 import type { ItemAction } from "@/types/settings";
 import { cn } from "@/utils/cn";
-import { isMac } from "@/utils/is";
+import { isMac, isWinClipboardWindow } from "@/utils/is";
 import type { WindowVisibilityPayload } from "../hooks/previewController";
 import {
   isSpaceKey,
@@ -596,7 +596,11 @@ const List: FC = () => {
 
     if (event.key === "Escape") {
       event.preventDefault();
-      closeTopEscapeLayer();
+      if (isWinClipboardWindow()) {
+        resetFiltersOrHideWindow();
+      } else {
+        closeTopEscapeLayer();
+      }
 
       return;
     }
@@ -1111,6 +1115,28 @@ const List: FC = () => {
     if (!deleteFavoriteItemsOnlyInFavoriteGroup) return true;
 
     return range === "favorite";
+  }
+
+  /**
+   * fork（Windows）：ESC 只有两层。有类型 / 自定义分组 / 收藏筛选时一次全部清掉、回到默认视图，
+   * 预览开着就一起关；没有筛选时直接关窗口（预览随窗口一起收起）。搜索词不动。
+   */
+  function resetFiltersOrHideWindow() {
+    const filtered =
+      clipboardViewState.category !== null ||
+      clipboardViewState.groupId !== null ||
+      clipboardViewState.range !== "all";
+
+    if (!filtered) {
+      void hideWindow(WINDOW_LABEL.CLIPBOARD);
+      return;
+    }
+
+    if (previewSession !== null) closePreview("escape");
+
+    clipboardViewState.category = null;
+    clipboardViewState.groupId = null;
+    clipboardViewState.range = "all";
   }
 
   /**

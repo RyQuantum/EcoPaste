@@ -1,5 +1,7 @@
-//! Alt 当 Ctrl 用（fork 补丁）：设置 `ry.windowModifier = "alt"` 时，剪贴板窗口可见期间
+//! Alt 当 Ctrl 用（fork 补丁）：设置 `ry.windowModifier` 为 `alt` 或 `altOnly` 时，剪贴板窗口可见期间
 //! 导航钩子吞掉 Alt，改为注入 Ctrl（AutoHotkey `LAlt::LCtrl` 同款做法）。
+//! `altOnly` 另外让物理 Ctrl 不再算窗口快捷键修饰键：它的按下松开不通知前端，
+//! 按着它的编辑组合交还搜索框（见 `search_handoff.rs`）。
 //!
 //! - 前台程序收不到 Alt，不会因为「单按一下 Alt」弹出菜单栏。
 //! - 前端收到的是真正的 Ctrl：字母 / 符号 / 数字快捷键、提示徽标，以及「打开窗口时聚焦搜索框」
@@ -16,8 +18,8 @@ use tauri::{AppHandle, Emitter, Manager};
 use winapi::shared::minwindef::UINT;
 use winapi::um::winuser::{
     GetAsyncKeyState, SendInput, INPUT, INPUT_KEYBOARD, KBDLLHOOKSTRUCT, KEYBDINPUT,
-    KEYEVENTF_KEYUP, LLKHF_INJECTED, VK_LCONTROL, VK_LMENU, VK_MENU, VK_RMENU, WM_KEYDOWN,
-    WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
+    KEYEVENTF_KEYUP, LLKHF_INJECTED, VK_CONTROL, VK_LCONTROL, VK_LMENU, VK_MENU, VK_RMENU,
+    WM_KEYDOWN, WM_KEYUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
 };
 
 use super::NAV_EVENT;
@@ -36,10 +38,44 @@ pub enum AltKey {
     Pass,
 }
 
+fn window_modifier(app: &AppHandle) -> WindowModifier {
+    app.try_state::<SettingsStore>()
+        .map(|store| store.snapshot().ry.window_modifier)
+        .unwrap_or_default()
+}
+
 /// Alt 是否也算窗口快捷键修饰键。
 fn alt_mode(app: &AppHandle) -> bool {
-    app.try_state::<SettingsStore>()
-        .is_some_and(|store| store.snapshot().ry.window_modifier == WindowModifier::Alt)
+    window_modifier(app).alt_acts_as_ctrl()
+}
+
+/// 设置是否选了「只用 Alt」。
+pub fn alt_only(app: &AppHandle) -> bool {
+    window_modifier(app) == WindowModifier::AltOnly
+}
+
+/// 窗口快捷键修饰键此刻是否按着：「只用 Alt」只认 Alt（吞掉后注入的 Ctrl、或窗口弹出前就按着的 Alt），
+/// 其余两档认系统里的 Ctrl（含注入的）和按着的 Alt。
+pub fn modifier_down(app: &AppHandle) -> bool {
+    if alt_only(app) {
+        return CTRL_INJECTED.load(Ordering::Relaxed) || held_alt_acts_as_ctrl(app);
+    }
+
+    ctrl_held_in_system() || held_alt_acts_as_ctrl(app)
+}
+
+/// 「只用 Alt」档下按着的是物理 Ctrl（不是 Alt 换来的）：此时的组合键交还搜索框做文本编辑。
+pub fn physical_ctrl_edits_search(app: &AppHandle) -> bool {
+    alt_only(app) && ctrl_held_in_system() && !modifier_down(app)
+}
+
+/// 这次 Ctrl 按下 / 松开要不要通知前端（显示提示徽标）。「只用 Alt」档下只通知 Alt 换来的注入 Ctrl。
+pub fn ctrl_event_reaches_frontend(app: &AppHandle, kbd: &KBDLLHOOKSTRUCT) -> bool {
+    kbd.flags & LLKHF_INJECTED != 0 || !alt_only(app)
+}
+
+fn ctrl_held_in_system() -> bool {
+    (unsafe { GetAsyncKeyState(VK_CONTROL) } as u16) & 0x8000 != 0
 }
 
 /// 系统层面 Alt 是否按着。被钩子吞掉的 Alt 不会更新这个状态，所以为真只可能是

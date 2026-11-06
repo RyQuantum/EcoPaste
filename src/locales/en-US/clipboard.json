@@ -88,6 +88,7 @@
     "editSelected": "Edit (images in Snipping Tool, text in the chosen editor)",
     "favoriteSelected": "Favorite / unfavorite",
     "focusSearch": "Focus search",
+    "moveSearchCursor": "Move the cursor in search (with Shift / Ctrl to select)",
     "navigate": "Navigate up/down",
     "noteSelected": "Add / edit note",
     "openPreference": "Open Preferences Window",
@@ -98,8 +99,10 @@
     "pinSelected": "Pin / unpin selected item",
     "pinWindow": "Pin / unpin window",
     "previewSelected": "Hold to preview selected item",
+    "resetFiltersOrClose": "Clear filters; close the window when none are set",
     "showShortcuts": "Show shortcuts",
     "switchCategory": "Switch category",
+    "switchCategoryByKey": "Show only text / images / files",
     "switchCustomGroup": "Switch custom group",
     "toggleRange": "Toggle all / favorites"
   },

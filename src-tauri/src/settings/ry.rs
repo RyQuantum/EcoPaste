@@ -48,13 +48,22 @@ impl Ry {
 }
 
 /// `Primary` 是平台主修饰键（macOS ⌘ / Windows Ctrl），即上游原有行为；
-/// `Alt` 表示按住 Alt 与按住 Ctrl 完全等效（Ctrl 照常可用）。
+/// `Alt` 表示按住 Alt 与按住 Ctrl 完全等效（Ctrl 照常可用）；
+/// `AltOnly` 表示窗口快捷键只认 Alt，Ctrl 组合交给搜索框做文本编辑（ry.18 新增）。
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum WindowModifier {
     #[default]
     Primary,
     Alt,
+    AltOnly,
+}
+
+impl WindowModifier {
+    /// 按住 Alt 是否当作窗口快捷键修饰键。
+    pub fn alt_acts_as_ctrl(self) -> bool {
+        matches!(self, Self::Alt | Self::AltOnly)
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -213,6 +222,23 @@ mod tests {
         assert!(serde_json::to_string(&ry)
             .unwrap()
             .contains(r#""windowModifier":"alt""#));
+    }
+
+    #[test]
+    fn window_modifier_round_trips_all_three_values() {
+        for (json, value) in [
+            (r#""primary""#, WindowModifier::Primary),
+            (r#""alt""#, WindowModifier::Alt),
+            (r#""altOnly""#, WindowModifier::AltOnly),
+        ] {
+            let parsed: WindowModifier = serde_json::from_str(json).unwrap();
+            assert_eq!(parsed, value);
+            assert_eq!(serde_json::to_string(&value).unwrap(), json);
+        }
+
+        assert!(!WindowModifier::Primary.alt_acts_as_ctrl());
+        assert!(WindowModifier::Alt.alt_acts_as_ctrl());
+        assert!(WindowModifier::AltOnly.alt_acts_as_ctrl());
     }
 
     #[test]

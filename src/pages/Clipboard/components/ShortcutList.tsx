@@ -1,6 +1,9 @@
 import type { FC, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useSnapshot } from "valtio";
 import ScrollArea from "@/components/ScrollArea";
+import { settingsState } from "@/stores/settings";
+import { isWin } from "@/utils/is";
 import { getShortcutKeyDisplays, type ShortcutPattern } from "@/utils/shortcut";
 
 interface Shortcut {
@@ -40,10 +43,23 @@ const SHORTCUTS: Shortcut[] = [
   { keys: ["ArrowUp", "/", "ArrowDown"], labelKey: "shortcuts.navigate" },
   { keys: "CmdOrCtrl+F", labelKey: "shortcuts.focusSearch" },
   { keys: "CmdOrCtrl+Q", labelKey: "shortcuts.toggleRange" },
-  {
-    keys: ["ArrowLeft", "/", "ArrowRight"],
-    labelKey: "shortcuts.switchCategory",
-  },
+  ...(isWin
+    ? [
+        {
+          keys: ["F1", "/", "F2", "/", "F3"],
+          labelKey: "shortcuts.switchCategoryByKey",
+        },
+        {
+          keys: ["ArrowLeft", "/", "ArrowRight"],
+          labelKey: "shortcuts.moveSearchCursor",
+        },
+      ]
+    : [
+        {
+          keys: ["ArrowLeft", "/", "ArrowRight"],
+          labelKey: "shortcuts.switchCategory",
+        },
+      ]),
   {
     keys: ["Tab", "/", "Shift", "Tab"],
     labelKey: "shortcuts.switchCustomGroup",
@@ -52,8 +68,25 @@ const SHORTCUTS: Shortcut[] = [
   { keys: "CmdOrCtrl+P", labelKey: "shortcuts.pinWindow" },
   { keys: "CmdOrCtrl+K", labelKey: "shortcuts.showShortcuts" },
   { keys: "CmdOrCtrl+,", labelKey: "shortcuts.openPreference" },
-  { keys: "Escape", labelKey: "shortcuts.closePreviewFilterWindow" },
+  {
+    keys: "Escape",
+    labelKey: isWin
+      ? "shortcuts.resetFiltersOrClose"
+      : "shortcuts.closePreviewFilterWindow",
+  },
 ];
+
+/**
+ * fork：「只用 Alt」档下窗口快捷键的修饰键显示成 Alt。
+ */
+function withWindowModifier(keys: ShortcutPattern, altOnly: boolean) {
+  if (!altOnly) return keys;
+  if (typeof keys === "string") return keys.replace("CmdOrCtrl", "Alt");
+
+  return keys.map((key) => {
+    return key === "CmdOrCtrl" ? "Alt" : key;
+  });
+}
 
 // 暂未实现但占位，方便后续补齐（注释提示，不渲染）：
 // SHIFT 触发的组合：⇧⌘1 粘贴第一行为纯文本等。
@@ -64,6 +97,8 @@ const SHORTCUTS: Shortcut[] = [
  */
 const ShortcutList: FC = () => {
   const { t } = useTranslation("clipboard");
+  const { ry } = useSnapshot(settingsState);
+  const altOnly = isWin && ry?.windowModifier === "altOnly";
 
   return (
     <ScrollArea
@@ -78,10 +113,12 @@ const ShortcutList: FC = () => {
           <span className="text-sm">{t(item.labelKey)}</span>
 
           <div className="flex items-center gap-1">
-            {getShortcutKeyDisplays(item.keys).map((key, index) => (
-              // biome-ignore lint/suspicious/noArrayIndexKey: 静态序列且不会重排
-              <Kbd key={index}>{key}</Kbd>
-            ))}
+            {getShortcutKeyDisplays(withWindowModifier(item.keys, altOnly)).map(
+              (key, index) => (
+                // biome-ignore lint/suspicious/noArrayIndexKey: 静态序列且不会重排
+                <Kbd key={index}>{key}</Kbd>
+              ),
+            )}
           </div>
         </div>
       ))}
