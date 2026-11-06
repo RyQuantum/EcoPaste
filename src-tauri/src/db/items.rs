@@ -145,8 +145,8 @@ pub async fn query_items(pool: &SqlitePool, q: &ClipboardItemQuery) -> Result<Ve
 
 /// 列表 + 总数一次返回，供命令层组装 [`ClipboardItemPage`]：
 /// 一次 IPC 拿到「本页项 / 当前过滤下的总数 / 是否还有下一页」。
-/// `keyword` 按字符长度分流：≥3 走 FTS5（trigram 分词），1–2 走 `LIKE '%kw%'`
-/// （兜底短词；trigram 索引最短 3 字符，对 1–2 字符词永远 0 命中）。
+/// `keyword` 按空白拆词、词之间 AND：≥3 字符的词走 FTS5（trigram 分词），1–2 字符的词各走
+/// `LIKE '%词%'`（兜底短词；trigram 索引最短 3 字符，对 1–2 字符词永远 0 命中）。
 pub async fn query_items_page(
     pool: &SqlitePool,
     q: &ClipboardItemQuery,
@@ -393,40 +393,32 @@ pub async fn clear_items(
     Ok(outcome)
 }
 
-/// 关键词过滤分流：≥3 字符走 FTS5（trigram），1–2 字符走 LIKE 兜底，空 / 仅空白不过滤。
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum KeywordFilter {
-    None,
-    /// `clipboard_items_fts MATCH ?` 的表达式，已含前缀通配。
-    Fts(String),
-    /// 已转义 `% _ \` 的关键词；下游统一拼成 `%<kw>%` 多列模糊匹配。
-    Like(String),
+/// 关键词过滤：按空白拆词，每个词单独过滤、词之间 AND（不要求顺序、不要求相邻）。
+/// ≥3 字符的词合成一条 FTS5（trigram）MATCH；1–2 字符的词 trigram 索引永远 0 命中，
+/// 各自走一条 LIKE 兜底。空 / 仅空白不过滤。
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct KeywordFilter {
+    /// `clipboard_items_fts MATCH ?` 的表达式，已含前缀通配；没有 ≥3 字符的词时为 `None`。
+    fts: Option<String>,
+    /// 1–2 字符的词，已转义 `% _ \`；下游各自拼成 `%<词>%` 多列模糊匹配。
+    like: Vec<String>,
 }
 
 impl KeywordFilter {
-    /// 按字符数（非字节）判定走 FTS 还是 LIKE。CJK 一个字符也算 1，
-    /// 与 trigram 的 3 字符门槛保持一致。
-    ///
-    /// 注意：门槛按**每个空白分词**判定，而非整串字符数。trigram 索引对 <3 字符的
-    /// token 永远 0 命中，而 FTS5 表达式里多 token 之间默认是 AND —— 只要有一个短词，
-    /// 整条表达式就被拖成 0 结果（例如 `a b` 会生成 `"a"* "b"*`，二者皆 <3 字符）。
-    /// 因此仅当所有分词均 ≥3 字符时才走 FTS，否则降级到 LIKE 兜底。
+    /// 按字符数（非字节）分流每个词。CJK 一个字符也算 1，与 trigram 的 3 字符门槛一致。
     fn from_keyword(keyword: Option<&str>) -> Self {
         let Some(trimmed) = keyword.map(str::trim).filter(|s| !s.is_empty()) else {
-            return Self::None;
+            return Self::default();
         };
 
-        let fts_viable = trimmed
+        let (long, short): (Vec<&str>, Vec<&str>) = trimmed
             .split_whitespace()
-            .all(|token| token.chars().count() >= 3);
+            .partition(|token| token.chars().count() >= 3);
 
-        if fts_viable {
-            if let Some(expr) = build_fts_expr(trimmed) {
-                return Self::Fts(expr);
-            }
+        Self {
+            fts: build_fts_expr(&long.join(" ")),
+            like: short.into_iter().map(escape_like).collect(),
         }
-
-        Self::Like(escape_like(trimmed))
     }
 }
 
@@ -513,25 +505,22 @@ fn push_filter_clauses(
     q: &ClipboardItemQuery,
     keyword: &KeywordFilter,
 ) {
-    match keyword {
-        KeywordFilter::None => {}
-        KeywordFilter::Fts(expr) => {
-            qb.push(
-                " AND clipboard_items.rowid IN (SELECT rowid FROM clipboard_items_fts WHERE clipboard_items_fts MATCH ",
-            )
-            .push_bind(expr.clone())
-            .push(")");
-        }
-        KeywordFilter::Like(kw) => {
-            // FTS 索引覆盖 search_text / note 两列，LIKE 兜底也跟齐，
-            // 让 1–2 字符短词的命中范围与长词一致。
-            let pattern = format!("%{kw}%");
-            qb.push(" AND (clipboard_items.search_text LIKE ")
-                .push_bind(pattern.clone())
-                .push(" ESCAPE '\\' OR clipboard_items.note LIKE ")
-                .push_bind(pattern)
-                .push(" ESCAPE '\\')");
-        }
+    if let Some(expr) = &keyword.fts {
+        qb.push(
+            " AND clipboard_items.rowid IN (SELECT rowid FROM clipboard_items_fts WHERE clipboard_items_fts MATCH ",
+        )
+        .push_bind(expr.clone())
+        .push(")");
+    }
+    for kw in &keyword.like {
+        // FTS 索引覆盖 search_text / note 两列，LIKE 兜底也跟齐，
+        // 让 1–2 字符短词的命中范围与长词一致。
+        let pattern = format!("%{kw}%");
+        qb.push(" AND (clipboard_items.search_text LIKE ")
+            .push_bind(pattern.clone())
+            .push(" ESCAPE '\\' OR clipboard_items.note LIKE ")
+            .push_bind(pattern)
+            .push(" ESCAPE '\\')");
     }
     // group（UI Tab）覆盖显式 kind / favorite；为 None 时回退到显式字段（单测使用）。
     let (effective_kind, effective_favorite) = match q.group {
@@ -1225,81 +1214,126 @@ mod tests {
         assert_eq!(outcome.image_files, vec!["cafe1234.png".to_owned()]);
     }
 
+    fn fts_only(expr: &str) -> KeywordFilter {
+        KeywordFilter {
+            fts: Some(expr.to_owned()),
+            like: Vec::new(),
+        }
+    }
+
+    fn like_only(words: &[&str]) -> KeywordFilter {
+        KeywordFilter {
+            fts: None,
+            like: words.iter().map(|w| (*w).to_owned()).collect(),
+        }
+    }
+
     #[test]
-    fn keyword_filter_classifies_by_char_length() {
-        assert_eq!(KeywordFilter::from_keyword(None), KeywordFilter::None);
+    fn keyword_filter_classifies_each_token_by_char_length() {
+        assert_eq!(KeywordFilter::from_keyword(None), KeywordFilter::default());
         assert_eq!(
             KeywordFilter::from_keyword(Some("   ")),
-            KeywordFilter::None
+            KeywordFilter::default()
         );
 
         // 1–2 字符走 LIKE（含 CJK）。
-        assert_eq!(
-            KeywordFilter::from_keyword(Some("a")),
-            KeywordFilter::Like("a".to_owned())
-        );
+        assert_eq!(KeywordFilter::from_keyword(Some("a")), like_only(&["a"]));
         assert_eq!(
             KeywordFilter::from_keyword(Some("中文")),
-            KeywordFilter::Like("中文".to_owned())
+            like_only(&["中文"])
         );
 
-        // ≥3 字符走 FTS。
+        // ≥3 字符走 FTS；全长词多词查询仍是一条 FTS 表达式（FTS5 多 token 默认 AND）。
         assert_eq!(
             KeywordFilter::from_keyword(Some("foo")),
-            KeywordFilter::Fts("\"foo\"*".to_owned())
+            fts_only("\"foo\"*")
         );
         assert_eq!(
-            KeywordFilter::from_keyword(Some("foo bar")),
-            KeywordFilter::Fts("\"foo\"* \"bar\"*".to_owned())
+            KeywordFilter::from_keyword(Some("foo bar baz")),
+            fts_only("\"foo\"* \"bar\"* \"baz\"*")
         );
         assert_eq!(
             KeywordFilter::from_keyword(Some("a\"b")),
-            KeywordFilter::Fts("\"a\"\"b\"*".to_owned())
+            fts_only("\"a\"\"b\"*")
         );
     }
 
     #[test]
-    fn keyword_filter_drops_multi_token_short_words_to_like() {
-        // 整串 ≥3 字符，但每个空白分词都 <3 字符：trigram 对 <3 字符 token 永远 0 命中，
-        // 且 FTS5 多 token 默认 AND，整条表达式会被任一短词拖成 0 结果 → 必须降级 LIKE。
+    fn keyword_filter_splits_short_tokens_into_separate_likes() {
+        // 每个短词单独一条 LIKE，不再把整串（含空格）当成一个 LIKE。
         assert_eq!(
-            KeywordFilter::from_keyword(Some("a b")),
-            KeywordFilter::Like("a b".to_owned())
+            KeywordFilter::from_keyword(Some("ab  cd")),
+            like_only(&["ab", "cd"])
         );
+        // 混合长度：长词进 FTS，短词各自 LIKE；短词照样转义。
         assert_eq!(
-            KeywordFilter::from_keyword(Some("ab cd")),
-            KeywordFilter::Like("ab cd".to_owned())
-        );
-        // 混合长度：只要有一个分词 <3 字符，整条 FTS 表达式就会被拖成 0 命中 → LIKE。
-        assert_eq!(
-            KeywordFilter::from_keyword(Some("foo b")),
-            KeywordFilter::Like("foo b".to_owned())
-        );
-        // 所有分词均 ≥3 字符仍走 FTS（回归保障，语义不变）。
-        assert_eq!(
-            KeywordFilter::from_keyword(Some("foo bar baz")),
-            KeywordFilter::Fts("\"foo\"* \"bar\"* \"baz\"*".to_owned())
+            KeywordFilter::from_keyword(Some("foo b% bar")),
+            KeywordFilter {
+                fts: Some("\"foo\"* \"bar\"*".to_owned()),
+                like: vec!["b\\%".to_owned()],
+            }
         );
     }
 
-    #[tokio::test]
-    async fn multi_token_short_keyword_falls_back_to_like() {
-        let pool = memory_pool().await;
-        let mut item = sample_item("short");
-        item.content = "ab cd ef".to_owned();
-        item.content_hash = content_hash(ClipboardKind::Text, &item.content);
-        item.search_text = Some("ab cd ef".to_owned());
-        insert_item(&pool, &item).await.unwrap();
+    /// 插入一条文本记录，`search_text` 与正文相同。
+    async fn insert_text(pool: &SqlitePool, id: &str, text: &str) {
+        let mut item = sample_item(id);
+        item.content = text.to_owned();
+        item.content_hash = content_hash(ClipboardKind::Text, text);
+        item.search_text = Some(text.to_owned());
+        insert_item(pool, &item).await.unwrap();
+    }
 
+    /// 列表和计数必须一致；返回命中的 id（按 id 排序，便于断言）。
+    async fn search_ids(pool: &SqlitePool, keyword: &str) -> Vec<String> {
         let q = ClipboardItemQuery {
-            keyword: Some("ab cd".to_owned()),
+            keyword: Some(keyword.to_owned()),
             ..Default::default()
         };
+        let (items, total) = query_items_page(pool, &q).await.unwrap();
+        assert_eq!(items.len() as i64, total, "count mismatch for {keyword:?}");
 
-        // 旧逻辑按整串字符数（5 ≥ 3）判走 FTS：`"ab"* "cd"*`，两个 token 均 <3 字符，
-        // trigram 返回 0 行 → 搜不到刚插入的记录。现按分词长度降级 LIKE `%ab cd%`，命中。
-        let found = query_items(&pool, &q).await.unwrap();
-        assert_eq!(ids(&found), ["short"]);
+        let mut found: Vec<String> = items.into_iter().map(|item| item.id).collect();
+        found.sort();
+        found
+    }
+
+    #[tokio::test]
+    async fn multi_token_search_requires_every_token_in_any_order() {
+        let pool = memory_pool().await;
+        insert_text(&pool, "reversed", "cd 在前，中间隔着别的字，ab 在后").await;
+        insert_text(&pool, "only_ab", "ab only").await;
+        insert_text(&pool, "meeting", "会议的纪要已经发出").await;
+        insert_text(&pool, "meeting_only", "会议改到下午").await;
+        insert_text(&pool, "mixed", "foobar and b-side").await;
+        insert_text(&pool, "foo_only", "foobar alone").await;
+
+        // 短词：不相邻、反序也命中；只含其中一个词的不命中。
+        assert_eq!(search_ids(&pool, "ab cd").await, ["reversed"]);
+        // 中文两字词。
+        assert_eq!(search_ids(&pool, "会议 纪要").await, ["meeting"]);
+        assert_eq!(search_ids(&pool, "纪要 会议").await, ["meeting"]);
+        // 长词 + 短词混合：FTS 与 LIKE 之间也是 AND。
+        assert_eq!(search_ids(&pool, "foo -s").await, ["mixed"]);
+        // 有一个词哪里都没有 → 0 条（计数同样为 0，由 search_ids 断言）。
+        assert!(search_ids(&pool, "会议 zz").await.is_empty());
+        assert!(search_ids(&pool, "foo zzz").await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn single_and_full_length_keywords_behave_as_before() {
+        let pool = memory_pool().await;
+        insert_text(&pool, "a", "hello rustacean world").await;
+        insert_text(&pool, "b", "hello there").await;
+
+        assert_eq!(search_ids(&pool, "he").await, ["a", "b"]);
+        assert_eq!(search_ids(&pool, "hello").await, ["a", "b"]);
+        assert_eq!(search_ids(&pool, "world hello").await, ["a"]);
+        // 短词仍匹配备注列。
+        let mut noted = sample_item("noted");
+        noted.note = Some("备注里有 xy".to_owned());
+        insert_item(&pool, &noted).await.unwrap();
+        assert_eq!(search_ids(&pool, "xy").await, ["noted"]);
     }
 
     #[test]
