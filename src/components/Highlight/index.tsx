@@ -1,4 +1,5 @@
 import type { FC, ReactNode } from "react";
+import { findHighlightRanges } from "@/utils/searchHighlight";
 
 interface HighlightProps {
   /**
@@ -7,7 +8,7 @@ interface HighlightProps {
   text: string;
   /**
    * 搜索关键词，空串 / 仅空白时直接渲染原文。
-   * 匹配规则与 Rust 后端一致：大小写不敏感子串匹配，不做正则 / 分词。
+   * 匹配规则与 Rust 后端一致：按空白拆词，每个词大小写不敏感子串匹配，不做正则。
    */
   keyword?: string;
   /**
@@ -30,28 +31,22 @@ const Highlight: FC<HighlightProps> = (props) => {
 
   if (!kw) return <span className={className}>{text}</span>;
 
-  const lowerText = text.toLowerCase();
-  const lowerKw = kw.toLowerCase();
-  const kwLen = lowerKw.length;
-
   const nodes: ReactNode[] = [];
   let cursor = 0;
-  let matchIndex = lowerText.indexOf(lowerKw);
   let key = 0;
 
-  while (matchIndex !== -1) {
-    if (matchIndex > cursor) {
-      nodes.push(text.slice(cursor, matchIndex));
+  for (const { start, end } of findHighlightRanges(text, kw)) {
+    if (start > cursor) {
+      nodes.push(text.slice(cursor, start));
     }
 
     nodes.push(
       <mark className="bg-ant-gold-3" key={key++}>
-        {text.slice(matchIndex, matchIndex + kwLen)}
+        {text.slice(start, end)}
       </mark>,
     );
 
-    cursor = matchIndex + kwLen;
-    matchIndex = lowerText.indexOf(lowerKw, cursor);
+    cursor = end;
   }
 
   if (cursor < text.length) {
